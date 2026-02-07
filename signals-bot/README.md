@@ -280,11 +280,13 @@ Goal: 1-year resolution in decent time
 - Bulk yfinance download (multi-ticker)
 - --jobs N parallelization per ticker
 - Single audit file + ledger CSV
+- consider unit testing
 
 v1.2 — Realism Upgrade
 Goal: execution closer to reality
 - B: next day open for entry / exit
 - Optional slippage / fees (configurable)
+- Add a freaking database
 
 v1.3 — UI & Control Plane
 Goal: no more terminal-only usage
@@ -308,6 +310,10 @@ v1.5 — Split & Scale (Optional)
 v1.6 (or sooner) - Rationalise
 - Introduce concepts of trade sizings
 - Sizing that learns from backtests
+
+v1.x
+- unit tests components backend-/ui
+- 
 
 Roadmap Extension (LLMs + Production Stack)
 
