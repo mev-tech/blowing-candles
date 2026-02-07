@@ -166,202 +166,94 @@ Audit log is the canonical source for analysis:
 logs/sim_decisions.jsonl
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-OLD:
-signals-bot workspace
-
-docker build -t signals-bot .
-docker run --rm -v "$PWD:/app" signals-bot
-cat signals.txt
-
-docker run --rm -v "$PWD:/app" -w /app signals-bot python -m signals_bot.cli.check_calendar
----------
-
-
-Perfect. Uite cheat-sheet-ul complet, scurt și clar, cu toate comenzile relevante în stadiul actual al proiectului 👇
-(îl poți salva ca COMMANDS.md dacă vrei)
-
-🧱 Build & Run (agenții)
-Build imagine (când schimbi codul)
-docker build -t signals-bot .
-
-Run agenți (produce signals + audit + state)
-docker run --rm -v "$PWD:/app" signals-bot
-
-Vezi output rapid
-cat signals.txt
-
-📅 Earnings calendar
-Editezi calendarul manual
-nano earnings_calendar.json
-
-
-Format recomandat:
-
-{
-  "NVDA": ["2026-02-09T21:00:00Z", "2026-05-20T21:00:00Z"]
-}
-
-Verifici calendarul (helper)
-
-👉 asta e comanda importantă, ruleaz-o regulat
-
-docker run --rm -v "$PWD:/app" -w /app signals-bot \
-  python -m signals_bot.cli.check_calendar
-
-
-Output posibil:
-
-OK → totul bine
-
-EXPIRED → ai tickere cu doar date în trecut
-
-MISSING → ticker din watchlist lipsește din calendar
-
-Exit codes:
-
-0 = ok
-
-2 = calendar problem (bun pt CI / cron mai târziu)
-
-🧠 State & Policy
-Vezi state-ul curent (cooldown / buys)
-cat data/state.json
-
-Reset manual state (test / zi nouă)
-rm -f data/state.json
-
-🧾 Audit log
-Vezi ultimele decizii
-tail -n 20 logs/decisions.jsonl
-
-Filtrezi doar BUY-uri
-grep '"final": "Action.BUY"' logs/decisions.jsonl
-
-Filtrezi blocări de news
-grep BLOCKED_BY_NEWS logs/decisions.jsonl
-
-🧪 Debug rapid (fără rebuild)
-Test mount volume
-docker run --rm -v "$PWD:/app" alpine sh -c "echo ok > /app/_test.txt"
-ls _test.txt
-
-Intri în container (debug)
-docker run --rm -it -v "$PWD:/app" signals-bot bash
-
-🔁 Flow zilnic recomandat (real life)
-docker build -t signals-bot .        # doar când modifici cod
-docker run --rm -v "$PWD:/app" signals-bot
-cat signals.txt
-docker run --rm -v "$PWD:/app" -w /app signals-bot \
-  python -m signals_bot.cli.check_calendar
-
-🧠 Ce NU trebuie să faci
-
-----
-
-Poți copia direct secțiunea asta în README.md.
-
-🔁 Simulations / Backtesting (decision-based)
-
-Acest proiect suportă rularea agenților “as-of” (time-travel), pentru a vedea ce semnale ar fi emis sistemul într-o perioadă istorică, fără a folosi date live sau a afecta state-ul real.
-
-🧱 Prerequisite
-
-Imaginea Docker trebuie să fie build-uită:
-
-docker build -t signals-bot .
-
-▶️ Run simulation for a specific day (as-of)
-
-Rulează toți agenții (News + Market + Governor) ca și cum “azi” ar fi o anumită dată:
-
-docker run --rm -v "$PWD:/app" -w /app signals-bot \
-  python -m signals_bot.cli.run_asof --asof 2025-09-18
-
-
-Output:
-
-asof_2025-09-18.signals.txt
-
-asof_2025-09-18.signals.json
-
-audit appended în logs/sim_decisions.jsonl
-
-state separat în data/sim_state.json
-
-▶️ Run simulation for a date range (daily loop)
-
-Exemplu: 15 Sept 2025 → 07 Feb 2026
-
-START=2025-09-15
-END=2026-02-07
-
-d="$START"
-while [ "$d" != "$(date -I -d "$END + 1 day")" ]; do
-  docker run --rm -v "$PWD:/app" -w /app signals-bot \
-    python -m signals_bot.cli.run_asof \
-      --asof "$d" \
-      --out-prefix sim_outputs/AAPL
-  d=$(date -I -d "$d + 1 day")
-done
-
-
-Output:
-
-fișiere zilnice în sim_outputs/ (opțional)
-
-audit unic: logs/sim_decisions.jsonl (sursa principală pentru statistici)
-
-📊 Extract statistics: BUY → SELL periods
-
-Pentru a obține perioadele de hold (BUY → SELL) pentru un ticker:
-
-docker run --rm -v "$PWD:/app" -w /app signals-bot \
-  python -m signals_bot.cli.stats_periods --ticker AAPL
-
-
-Exemplu output:
-
-[1] BUY 2025-09-18 -> SELL 2025-10-10 | holding: 22 days
-[open] BUY 2026-01-30 -> (no SELL yet) | holding so far: 8 days
-
-
-Cu lista completă a zilelor:
-
-python -m signals_bot.cli.stats_periods --ticker AAPL --list-days
-
-
-Cu interval limitat:
-
-python -m signals_bot.cli.stats_periods \
-  --ticker AAPL --start 2025-09-15 --end 2026-02-07
-
-🗂 Important notes
-
-Simulările folosesc:
-
-date zilnice (1D) din Yahoo Finance
-
-calendar local de earnings (earnings_calendar.json)
-
-Policy (cooldown / max buys) poate fi dezactivat sau relaxat pentru statistici
-
-Simulările nu afectează state-ul live
-
-Sursa de adevăr pentru analiză este:
-
-logs/sim_decisions.jsonl
+============================================================
+
+TODO (Clear Backlog)
+
+Core Correctness
+- B: Entry/Exit = next day open (more realistic execution)
+- Complete trade ledger
+  - entry price
+  - exit price
+  - return %
+  - max drawdown (optional)
+
+Performance
+- Fast backtesting (1-year range in reasonable time)
+- Avoid “1 container per day”
+- Bulk market data download (multi-ticker)
+- Internal loop over dates
+- --jobs N parallelization (per ticker)
+
+UX / Product
+- React UI (MVP)
+  - Select interval (start / end)
+  - Select mode (balanced / conservative / opportunistic)
+  - Run simulation
+  - View trades table (entry / exit / return / holding)
+  - View audit timeline per ticker
+- Simple API layer
+  - run_live
+  - run_asof
+  - run_range
+  - get_trades
+  - get_audit
+
+Ops / Runtime
+- Long-running container
+  - Periodic execution (internal scheduler / cron)
+  - On-demand execution triggered from UI
+- Notifications (later)
+  - Webhook
+  - Email
+  - Discord
+  - Telegram
+  - Manual execution first
+
+Architecture Evolution
+- Microservices split (after contracts are stable)
+  - Market service
+  - News service
+  - Governor / Policy service
+  - Backtester service
+- Microfrontends
+  - Only if needed (otherwise keep it simple)
+
+Roadmap by Releases
+
+v1.0 — MVP (Current)
+- Agents + outputs
+- Audit + state
+- run_asof + stats_periods
+- Earnings calendar helper
+
+v1.1 — Performance & Backtesting Usability
+Goal: 1-year resolution in decent time
+- run_range (single process, internal date loop)
+- Bulk yfinance download (multi-ticker)
+- --jobs N parallelization per ticker
+- Single audit file + ledger CSV
+
+v1.2 — Realism Upgrade
+Goal: execution closer to reality
+- B: next day open for entry / exit
+- Optional slippage / fees (configurable)
+
+v1.3 — UI & Control Plane
+Goal: no more terminal-only usage
+- React UI (MVP)
+  - Select tickers, interval, entry mode
+  - Run simulation / run live
+  - Trades table + simple charts
+- Minimal FastAPI backend in the same container
+
+v1.4 — Long-Running + Triggers
+Goal: always-on agent
+- Server-mode container
+- UI-triggered runs (run now)
+- Periodic scheduler (e.g. daily at 18:00 UTC)
+- Persistent volumes for state and audit
+
+v1.5 — Split & Scale (Optional)
+- Microservices split (market / news / governor / backtester)
+- Microfrontends only if justified
