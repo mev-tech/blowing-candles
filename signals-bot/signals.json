@@ -1,32 +1,51 @@
 [
   {
     "ticker": "AAPL",
-    "action": "WAIT",
+    "action": "BUY",
     "news_state": "TRADE_OK",
+    "market_action": "BUY",
+    "score": 100,
     "reason_codes": [],
-    "timestamp": "2026-02-07T14:21:02.556117Z"
+    "timestamp": "2026-02-07T14:34:05.539057Z",
+    "flags": []
   },
   {
     "ticker": "MSFT",
     "action": "WAIT",
     "news_state": "TRADE_OK",
-    "reason_codes": [],
-    "timestamp": "2026-02-07T14:21:02.556117Z"
+    "market_action": "WAIT",
+    "score": 0,
+    "reason_codes": [
+      "BELOW_SMA200",
+      "SMA50_BELOW_SMA200",
+      "RSI_WEAK"
+    ],
+    "timestamp": "2026-02-07T14:34:05.539057Z",
+    "flags": []
   },
   {
     "ticker": "NVDA",
     "action": "IGNORE",
     "news_state": "NO_TRADE",
+    "market_action": "WAIT",
+    "score": 70,
     "reason_codes": [
-      "EARNINGS_LT_48H"
+      "EARNINGS_LT_48H",
+      "RSI_WEAK"
     ],
-    "timestamp": "2026-02-07T14:21:02.556117Z"
+    "timestamp": "2026-02-07T14:34:05.539057Z",
+    "flags": []
   },
   {
     "ticker": "TSLA",
     "action": "WAIT",
     "news_state": "TRADE_OK",
-    "reason_codes": [],
-    "timestamp": "2026-02-07T14:21:02.556117Z"
+    "market_action": "WAIT",
+    "score": 70,
+    "reason_codes": [
+      "RSI_WEAK"
+    ],
+    "timestamp": "2026-02-07T14:34:05.539057Z",
+    "flags": []
   }
 ]

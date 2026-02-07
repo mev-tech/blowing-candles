@@ -3,7 +3,9 @@ import json
 import yaml
 
 from signals_bot.agents.news_sentinel import NewsSentinel
+from signals_bot.agents.market_analyst import MarketAnalyst
 from signals_bot.agents.trade_governor import TradeGovernor
+from signals_bot.core.models import Action, NewsState
 
 def main():
     cfg = yaml.safe_load(Path("config.yaml").read_text())
@@ -15,24 +17,47 @@ def main():
         earnings_block_hours=cfg["news"]["earnings_block_hours"],
         local_calendar_path=local_cal
     )
+    analyst = MarketAnalyst(lookback_days=365)
     governor = TradeGovernor(news_ttl_minutes=cfg["news"]["ttl_minutes"])
 
     news = sentinel.check(watchlist)
-    final = governor.gate(news)
+    market = analyst.analyze(watchlist)
+    final = governor.decide(news, market)
 
     lines = []
+    payload = []
+
     for f in final:
-        line = f"{f.ticker}  {f.action}  ({f.news_state}"
+        flags = []
+
+        # Flag when market wanted an action but news/gov blocked it
+        if f.market_action in (Action.BUY, Action.SELL) and f.action != f.market_action:
+            # likely blocked by news policy
+            if f.news_state in (NewsState.NO_TRADE, NewsState.WAIT):
+                flags.append("BLOCKED_BY_NEWS")
+
+        # Build human line
+        line = (
+            f"{f.ticker}  FINAL={f.action}  "
+            f"(market={f.market_action};news={f.news_state};score={f.score}"
+        )
+        if flags:
+            line += f";flags={','.join(flags)}"
         if f.reason_codes:
             line += f";{','.join(f.reason_codes)}"
         line += ")"
         lines.append(line)
 
+        # Add flags to JSON output too
+        d = f.model_dump(mode="json")
+        d["flags"] = flags
+        payload.append(d)
+
     out_txt = cfg["output"]["text_file"]
     out_json = cfg["output"]["json_file"]
 
     Path(out_txt).write_text("\n".join(lines) + "\n")
-    Path(out_json).write_text(json.dumps([f.model_dump(mode="json") for f in final], indent=2) + "\n")
+    Path(out_json).write_text(json.dumps(payload, indent=2) + "\n")
 
     print("\n".join(lines))
     print(f"\nWrote: {out_txt}, {out_json}")

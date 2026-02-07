@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml /app/pyproject.toml
 COPY src /app/src
 COPY config.yaml /app/config.yaml
+COPY earnings_calendar.json /app/earnings_calendar.json
 
 RUN pip install --upgrade pip \
  && pip install -e . \

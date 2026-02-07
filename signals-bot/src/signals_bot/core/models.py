@@ -28,9 +28,18 @@ class NewsSignal(BaseModel):
     valid_until: Optional[datetime] = None
     timestamp: datetime
 
+class MarketSignal(BaseModel):
+    ticker: str
+    action: Action                # BUY/SELL/WAIT (MVP uses BUY/WAIT)
+    score: int = 0                # 0-100
+    reason_codes: List[str] = []
+    timestamp: datetime
+
 class FinalSignal(BaseModel):
     ticker: str
     action: Action
     news_state: NewsState
+    market_action: Action
+    score: int = 0
     reason_codes: List[str] = []
     timestamp: datetime
