@@ -1,0 +1,9 @@
+watchlist:
+  - AAPL
+  - MSFT
+  - NVDA
+  - TSLA
+
+output:
+  text_file: signals.txt
+  json_file: signals.json
