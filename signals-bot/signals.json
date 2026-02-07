@@ -1,9 +1,32 @@
-{
-  "timestamp": "2026-02-07T13:48:16.564303+00:00",
-  "signals": [
-    "AAPL  WAIT  (BOOTSTRAP)",
-    "MSFT  WAIT  (BOOTSTRAP)",
-    "NVDA  WAIT  (BOOTSTRAP)",
-    "TSLA  WAIT  (BOOTSTRAP)"
-  ]
-}
+[
+  {
+    "ticker": "AAPL",
+    "action": "WAIT",
+    "news_state": "TRADE_OK",
+    "reason_codes": [],
+    "timestamp": "2026-02-07T14:21:02.556117Z"
+  },
+  {
+    "ticker": "MSFT",
+    "action": "WAIT",
+    "news_state": "TRADE_OK",
+    "reason_codes": [],
+    "timestamp": "2026-02-07T14:21:02.556117Z"
+  },
+  {
+    "ticker": "NVDA",
+    "action": "IGNORE",
+    "news_state": "NO_TRADE",
+    "reason_codes": [
+      "EARNINGS_LT_48H"
+    ],
+    "timestamp": "2026-02-07T14:21:02.556117Z"
+  },
+  {
+    "ticker": "TSLA",
+    "action": "WAIT",
+    "news_state": "TRADE_OK",
+    "reason_codes": [],
+    "timestamp": "2026-02-07T14:21:02.556117Z"
+  }
+]

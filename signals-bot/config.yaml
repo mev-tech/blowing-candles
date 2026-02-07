@@ -4,6 +4,11 @@ watchlist:
   - NVDA
   - TSLA
 
+news:
+  earnings_block_hours: 48
+  ttl_minutes: 180
+  local_earnings_calendar: earnings_calendar.json
+
 output:
   text_file: signals.txt
   json_file: signals.json
