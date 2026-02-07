@@ -1,0 +1,50 @@
+[
+  {
+    "ticker": "AAPL",
+    "action": "SELL",
+    "news_state": "TRADE_OK",
+    "market_action": "SELL",
+    "score": 0,
+    "reason_codes": [
+      "RSI_VERY_WEAK"
+    ],
+    "timestamp": "2026-01-02T00:00:00Z",
+    "flags": []
+  },
+  {
+    "ticker": "MSFT",
+    "action": "SELL",
+    "news_state": "TRADE_OK",
+    "market_action": "SELL",
+    "score": 0,
+    "reason_codes": [
+      "BELOW_SMA200",
+      "RSI_VERY_WEAK"
+    ],
+    "timestamp": "2026-01-02T00:00:00Z",
+    "flags": []
+  },
+  {
+    "ticker": "NVDA",
+    "action": "BUY",
+    "news_state": "TRADE_OK",
+    "market_action": "BUY",
+    "score": 100,
+    "reason_codes": [],
+    "timestamp": "2026-01-02T00:00:00Z",
+    "flags": []
+  },
+  {
+    "ticker": "TSLA",
+    "action": "WAIT",
+    "news_state": "WAIT",
+    "market_action": "WAIT",
+    "score": 70,
+    "reason_codes": [
+      "CALENDAR_EXPIRED",
+      "RSI_WEAK"
+    ],
+    "timestamp": "2026-01-02T00:00:00Z",
+    "flags": []
+  }
+]

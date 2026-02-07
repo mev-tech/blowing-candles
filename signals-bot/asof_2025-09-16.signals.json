@@ -8,31 +8,31 @@
     "reason_codes": [
       "COOLDOWN_ACTIVE"
     ],
-    "timestamp": "2025-09-18T00:00:00Z",
+    "timestamp": "2025-09-16T00:00:00Z",
     "flags": []
   },
   {
     "ticker": "MSFT",
     "action": "WAIT",
     "news_state": "TRADE_OK",
-    "market_action": "WAIT",
-    "score": 70,
+    "market_action": "BUY",
+    "score": 100,
     "reason_codes": [
-      "RSI_WEAK"
+      "COOLDOWN_ACTIVE"
     ],
-    "timestamp": "2025-09-18T00:00:00Z",
+    "timestamp": "2025-09-16T00:00:00Z",
     "flags": []
   },
   {
     "ticker": "NVDA",
-    "action": "WAIT",
+    "action": "SELL",
     "news_state": "TRADE_OK",
-    "market_action": "WAIT",
-    "score": 70,
+    "market_action": "SELL",
+    "score": 0,
     "reason_codes": [
-      "RSI_WEAK"
+      "RSI_VERY_WEAK"
     ],
-    "timestamp": "2025-09-18T00:00:00Z",
+    "timestamp": "2025-09-16T00:00:00Z",
     "flags": []
   },
   {
@@ -44,7 +44,7 @@
     "reason_codes": [
       "CALENDAR_EXPIRED"
     ],
-    "timestamp": "2025-09-18T00:00:00Z",
+    "timestamp": "2025-09-16T00:00:00Z",
     "flags": [
       "BLOCKED_BY_NEWS"
     ]

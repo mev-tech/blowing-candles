@@ -2,3 +2,39 @@
 {"ts": "2025-09-18T00:00:00Z", "ticker": "MSFT", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.WAIT", "score": 70, "flags": ["BLOCKED_BY_STALE_DATA"], "reasons": ["DATA_STALE", "RSI_WEAK"]}
 {"ts": "2025-09-18T00:00:00Z", "ticker": "NVDA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.WAIT", "score": 70, "flags": ["BLOCKED_BY_STALE_DATA"], "reasons": ["DATA_STALE", "RSI_WEAK"]}
 {"ts": "2025-09-18T00:00:00Z", "ticker": "TSLA", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.WAIT", "score": 100, "flags": ["BLOCKED_BY_STALE_DATA", "BLOCKED_BY_NEWS"], "reasons": ["DATA_STALE", "CALENDAR_EXPIRED"]}
+{"ts": "2025-09-18T00:00:00Z", "ticker": "AAPL", "final": "Action.BUY", "market": "Action.BUY", "news": "NewsState.TRADE_OK", "score": 100, "flags": [], "reasons": []}
+{"ts": "2025-09-18T00:00:00Z", "ticker": "MSFT", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.TRADE_OK", "score": 70, "flags": [], "reasons": ["RSI_WEAK"]}
+{"ts": "2025-09-18T00:00:00Z", "ticker": "NVDA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.TRADE_OK", "score": 70, "flags": [], "reasons": ["RSI_WEAK"]}
+{"ts": "2025-09-18T00:00:00Z", "ticker": "TSLA", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.WAIT", "score": 100, "flags": ["BLOCKED_BY_NEWS"], "reasons": ["CALENDAR_EXPIRED"]}
+{"ts": "2025-09-15T00:00:00Z", "ticker": "AAPL", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.TRADE_OK", "score": 100, "flags": [], "reasons": ["COOLDOWN_ACTIVE"]}
+{"ts": "2025-09-15T00:00:00Z", "ticker": "MSFT", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.TRADE_OK", "score": 100, "flags": [], "reasons": ["COOLDOWN_ACTIVE"]}
+{"ts": "2025-09-15T00:00:00Z", "ticker": "NVDA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.TRADE_OK", "score": 70, "flags": [], "reasons": ["RSI_WEAK"]}
+{"ts": "2025-09-15T00:00:00Z", "ticker": "TSLA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.WAIT", "score": 70, "flags": [], "reasons": ["CALENDAR_EXPIRED", "SMA50_BELOW_SMA200"]}
+{"ts": "2025-09-16T00:00:00Z", "ticker": "AAPL", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.TRADE_OK", "score": 100, "flags": [], "reasons": ["COOLDOWN_ACTIVE"]}
+{"ts": "2025-09-16T00:00:00Z", "ticker": "MSFT", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.TRADE_OK", "score": 100, "flags": [], "reasons": ["COOLDOWN_ACTIVE"]}
+{"ts": "2025-09-16T00:00:00Z", "ticker": "NVDA", "final": "Action.SELL", "market": "Action.SELL", "news": "NewsState.TRADE_OK", "score": 0, "flags": [], "reasons": ["RSI_VERY_WEAK"]}
+{"ts": "2025-09-16T00:00:00Z", "ticker": "TSLA", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.WAIT", "score": 100, "flags": ["BLOCKED_BY_NEWS"], "reasons": ["CALENDAR_EXPIRED"]}
+{"ts": "2025-09-17T00:00:00Z", "ticker": "AAPL", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.TRADE_OK", "score": 100, "flags": [], "reasons": ["COOLDOWN_ACTIVE"]}
+{"ts": "2025-09-17T00:00:00Z", "ticker": "MSFT", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.TRADE_OK", "score": 100, "flags": [], "reasons": ["COOLDOWN_ACTIVE"]}
+{"ts": "2025-09-17T00:00:00Z", "ticker": "NVDA", "final": "Action.SELL", "market": "Action.SELL", "news": "NewsState.TRADE_OK", "score": 0, "flags": [], "reasons": ["RSI_VERY_WEAK"]}
+{"ts": "2025-09-17T00:00:00Z", "ticker": "TSLA", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.WAIT", "score": 100, "flags": ["BLOCKED_BY_NEWS"], "reasons": ["CALENDAR_EXPIRED"]}
+{"ts": "2025-09-18T00:00:00Z", "ticker": "AAPL", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.TRADE_OK", "score": 100, "flags": [], "reasons": ["COOLDOWN_ACTIVE"]}
+{"ts": "2025-09-18T00:00:00Z", "ticker": "MSFT", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.TRADE_OK", "score": 70, "flags": [], "reasons": ["RSI_WEAK"]}
+{"ts": "2025-09-18T00:00:00Z", "ticker": "NVDA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.TRADE_OK", "score": 70, "flags": [], "reasons": ["RSI_WEAK"]}
+{"ts": "2025-09-18T00:00:00Z", "ticker": "TSLA", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.WAIT", "score": 100, "flags": ["BLOCKED_BY_NEWS"], "reasons": ["CALENDAR_EXPIRED"]}
+{"ts": "2025-09-14T00:00:00Z", "ticker": "AAPL", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.TRADE_OK", "score": 70, "flags": [], "reasons": ["SMA50_BELOW_SMA200"]}
+{"ts": "2025-09-14T00:00:00Z", "ticker": "MSFT", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.TRADE_OK", "score": 100, "flags": [], "reasons": ["COOLDOWN_ACTIVE"]}
+{"ts": "2025-09-14T00:00:00Z", "ticker": "NVDA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.TRADE_OK", "score": 70, "flags": [], "reasons": ["RSI_WEAK"]}
+{"ts": "2025-09-14T00:00:00Z", "ticker": "TSLA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.WAIT", "score": 70, "flags": [], "reasons": ["CALENDAR_EXPIRED", "SMA50_BELOW_SMA200"]}
+{"ts": "2025-09-15T00:00:00Z", "ticker": "AAPL", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.TRADE_OK", "score": 100, "flags": [], "reasons": ["COOLDOWN_ACTIVE"]}
+{"ts": "2025-09-15T00:00:00Z", "ticker": "MSFT", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.TRADE_OK", "score": 100, "flags": [], "reasons": ["COOLDOWN_ACTIVE"]}
+{"ts": "2025-09-15T00:00:00Z", "ticker": "NVDA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.TRADE_OK", "score": 70, "flags": [], "reasons": ["RSI_WEAK"]}
+{"ts": "2025-09-15T00:00:00Z", "ticker": "TSLA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.WAIT", "score": 70, "flags": [], "reasons": ["CALENDAR_EXPIRED", "SMA50_BELOW_SMA200"]}
+{"ts": "2026-01-02T00:00:00Z", "ticker": "AAPL", "final": "Action.SELL", "market": "Action.SELL", "news": "NewsState.TRADE_OK", "score": 0, "flags": [], "reasons": ["RSI_VERY_WEAK"]}
+{"ts": "2026-01-02T00:00:00Z", "ticker": "MSFT", "final": "Action.SELL", "market": "Action.SELL", "news": "NewsState.TRADE_OK", "score": 0, "flags": [], "reasons": ["BELOW_SMA200", "RSI_VERY_WEAK"]}
+{"ts": "2026-01-02T00:00:00Z", "ticker": "NVDA", "final": "Action.BUY", "market": "Action.BUY", "news": "NewsState.TRADE_OK", "score": 100, "flags": [], "reasons": []}
+{"ts": "2026-01-02T00:00:00Z", "ticker": "TSLA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.WAIT", "score": 70, "flags": [], "reasons": ["CALENDAR_EXPIRED", "RSI_WEAK"]}
+{"ts": "2026-01-01T00:00:00Z", "ticker": "AAPL", "final": "Action.SELL", "market": "Action.SELL", "news": "NewsState.TRADE_OK", "score": 0, "flags": [], "reasons": ["RSI_VERY_WEAK"]}
+{"ts": "2026-01-01T00:00:00Z", "ticker": "MSFT", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.TRADE_OK", "score": 100, "flags": [], "reasons": ["MAX_BUYS_REACHED"]}
+{"ts": "2026-01-01T00:00:00Z", "ticker": "NVDA", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.TRADE_OK", "score": 100, "flags": [], "reasons": ["MAX_BUYS_REACHED"]}
+{"ts": "2026-01-01T00:00:00Z", "ticker": "TSLA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.WAIT", "score": 70, "flags": [], "reasons": ["CALENDAR_EXPIRED", "RSI_WEAK"]}

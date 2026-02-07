@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import List
+from typing import List, Optional
 
 from signals_bot.core.models import (
     NewsSignal, NewsState,
@@ -24,8 +24,15 @@ class TradeGovernor:
     def _utc_now(self) -> datetime:
         return datetime.now(timezone.utc)
 
-    def decide(self, news_signals: List[NewsSignal], market_signals: List[MarketSignal]) -> List[FinalSignal]:
-        now = self._utc_now()
+    def decide(
+        self,
+        news_signals: List[NewsSignal],
+        market_signals: List[MarketSignal],
+        as_of: Optional[datetime] = None
+    ) -> List[FinalSignal]:
+
+        now = as_of.astimezone(timezone.utc) if as_of else self._utc_now()
+
         news_by = {n.ticker: n for n in news_signals}
         mkt_by = {m.ticker: m for m in market_signals}
         tickers = sorted(set(news_by.keys()) | set(mkt_by.keys()))
@@ -79,33 +86,26 @@ class TradeGovernor:
                 ))
                 continue
 
-            # Start with policy merge
             merged_reasons = (ns.reason_codes or []) + reasons
 
             # NEWS GATE
             if ns.state == NewsState.NO_TRADE:
                 action = Action.IGNORE
-
             elif ns.state == NewsState.WAIT:
                 action = Action.WAIT
-
             else:
-                # TRADE_OK -> allow market decision (BUY/SELL/WAIT)
                 action = market_action
 
                 # POLICY: limit BUY frequency
                 if action == Action.BUY:
-                    # max buys/day
                     if buys_today >= self.max_buys_per_day:
                         action = Action.WAIT
                         merged_reasons = ["MAX_BUYS_REACHED"] + merged_reasons
                     else:
-                        # cooldown since last buy
                         if last_buy_at is not None and (now - last_buy_at) < self.cooldown:
                             action = Action.WAIT
                             merged_reasons = ["COOLDOWN_ACTIVE"] + merged_reasons
                         else:
-                            # mark that a BUY would be taken (we record once per run)
                             if not buy_executed_this_run:
                                 buy_executed_this_run = True
 

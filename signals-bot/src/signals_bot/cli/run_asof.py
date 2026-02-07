@@ -54,7 +54,7 @@ def main():
 
     news = sentinel.check(watchlist, as_of=as_of)
     market = analyst.analyze(watchlist, as_of=as_of)
-    final = governor.decide(news, market)
+    final = governor.decide(news, market, as_of=as_of)
 
     lines = []
     payload = []
