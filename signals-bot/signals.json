@@ -1,12 +1,14 @@
 [
   {
     "ticker": "AAPL",
-    "action": "BUY",
+    "action": "WAIT",
     "news_state": "TRADE_OK",
     "market_action": "BUY",
     "score": 100,
-    "reason_codes": [],
-    "timestamp": "2026-02-07T14:47:15.465069Z",
+    "reason_codes": [
+      "MAX_BUYS_REACHED"
+    ],
+    "timestamp": "2026-02-07T15:01:34.718502Z",
     "flags": []
   },
   {
@@ -19,7 +21,7 @@
       "BELOW_SMA200",
       "RSI_VERY_WEAK"
     ],
-    "timestamp": "2026-02-07T14:47:15.465069Z",
+    "timestamp": "2026-02-07T15:01:34.718502Z",
     "flags": []
   },
   {
@@ -32,7 +34,7 @@
       "EARNINGS_LT_48H",
       "RSI_WEAK"
     ],
-    "timestamp": "2026-02-07T14:47:15.465069Z",
+    "timestamp": "2026-02-07T15:01:34.718502Z",
     "flags": []
   },
   {
@@ -44,7 +46,7 @@
     "reason_codes": [
       "RSI_WEAK"
     ],
-    "timestamp": "2026-02-07T14:47:15.465069Z",
+    "timestamp": "2026-02-07T15:01:34.718502Z",
     "flags": []
   }
 ]
