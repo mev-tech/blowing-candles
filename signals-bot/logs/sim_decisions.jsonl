@@ -1,0 +1,4 @@
+{"ts": "2025-09-18T00:00:00Z", "ticker": "AAPL", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.WAIT", "score": 100, "flags": ["BLOCKED_BY_STALE_DATA", "BLOCKED_BY_NEWS"], "reasons": ["DATA_STALE"]}
+{"ts": "2025-09-18T00:00:00Z", "ticker": "MSFT", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.WAIT", "score": 70, "flags": ["BLOCKED_BY_STALE_DATA"], "reasons": ["DATA_STALE", "RSI_WEAK"]}
+{"ts": "2025-09-18T00:00:00Z", "ticker": "NVDA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.WAIT", "score": 70, "flags": ["BLOCKED_BY_STALE_DATA"], "reasons": ["DATA_STALE", "RSI_WEAK"]}
+{"ts": "2025-09-18T00:00:00Z", "ticker": "TSLA", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.WAIT", "score": 100, "flags": ["BLOCKED_BY_STALE_DATA", "BLOCKED_BY_NEWS"], "reasons": ["DATA_STALE", "CALENDAR_EXPIRED"]}

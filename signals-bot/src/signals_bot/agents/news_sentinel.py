@@ -92,8 +92,8 @@ class NewsSentinel:
 
         return None
 
-    def check(self, tickers: List[str]) -> List[NewsSignal]:
-        now = datetime.now(timezone.utc)
+    def check(self, tickers: List[str], as_of: Optional[datetime] = None) -> List[NewsSignal]:
+        now = as_of.astimezone(timezone.utc) if as_of else datetime.now(timezone.utc)
         out: List[NewsSignal] = []
 
         for t in tickers:

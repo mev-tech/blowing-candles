@@ -1,0 +1,63 @@
+[
+  {
+    "ticker": "AAPL",
+    "action": "WAIT",
+    "news_state": "WAIT",
+    "market_action": "BUY",
+    "score": 100,
+    "reason_codes": [
+      "DATA_STALE"
+    ],
+    "timestamp": "2026-02-07T19:34:18.702856Z",
+    "flags": [
+      "BLOCKED_BY_STALE_DATA",
+      "BLOCKED_BY_NEWS"
+    ]
+  },
+  {
+    "ticker": "MSFT",
+    "action": "WAIT",
+    "news_state": "WAIT",
+    "market_action": "WAIT",
+    "score": 70,
+    "reason_codes": [
+      "DATA_STALE",
+      "RSI_WEAK"
+    ],
+    "timestamp": "2026-02-07T19:34:18.702856Z",
+    "flags": [
+      "BLOCKED_BY_STALE_DATA"
+    ]
+  },
+  {
+    "ticker": "NVDA",
+    "action": "WAIT",
+    "news_state": "WAIT",
+    "market_action": "WAIT",
+    "score": 70,
+    "reason_codes": [
+      "DATA_STALE",
+      "RSI_WEAK"
+    ],
+    "timestamp": "2026-02-07T19:34:18.702856Z",
+    "flags": [
+      "BLOCKED_BY_STALE_DATA"
+    ]
+  },
+  {
+    "ticker": "TSLA",
+    "action": "WAIT",
+    "news_state": "WAIT",
+    "market_action": "BUY",
+    "score": 100,
+    "reason_codes": [
+      "DATA_STALE",
+      "CALENDAR_EXPIRED"
+    ],
+    "timestamp": "2026-02-07T19:34:18.702856Z",
+    "flags": [
+      "BLOCKED_BY_STALE_DATA",
+      "BLOCKED_BY_NEWS"
+    ]
+  }
+]

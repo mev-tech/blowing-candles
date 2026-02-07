@@ -34,3 +34,7 @@
 {"ts": "2026-02-07T15:16:20.167221Z", "ticker": "MSFT", "final": "Action.SELL", "market": "Action.SELL", "news": "NewsState.TRADE_OK", "score": 0, "flags": [], "reasons": ["BELOW_SMA200", "RSI_VERY_WEAK"]}
 {"ts": "2026-02-07T15:16:20.167230Z", "ticker": "NVDA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.TRADE_OK", "score": 70, "flags": [], "reasons": ["RSI_WEAK"]}
 {"ts": "2026-02-07T15:16:20.167237Z", "ticker": "TSLA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.WAIT", "score": 70, "flags": [], "reasons": ["CALENDAR_EXPIRED", "RSI_WEAK"]}
+{"ts": "2026-02-07T18:48:44.526156Z", "ticker": "AAPL", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.TRADE_OK", "score": 100, "flags": [], "reasons": ["MAX_BUYS_REACHED"]}
+{"ts": "2026-02-07T18:48:44.526174Z", "ticker": "MSFT", "final": "Action.SELL", "market": "Action.SELL", "news": "NewsState.TRADE_OK", "score": 0, "flags": [], "reasons": ["BELOW_SMA200", "RSI_VERY_WEAK"]}
+{"ts": "2026-02-07T18:48:44.526183Z", "ticker": "NVDA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.TRADE_OK", "score": 70, "flags": [], "reasons": ["RSI_WEAK"]}
+{"ts": "2026-02-07T18:48:44.526191Z", "ticker": "TSLA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.WAIT", "score": 70, "flags": [], "reasons": ["CALENDAR_EXPIRED", "RSI_WEAK"]}

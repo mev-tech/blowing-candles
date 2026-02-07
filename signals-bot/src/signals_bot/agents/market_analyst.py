@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
-from typing import List
+from datetime import datetime, timezone, timedelta
+from typing import List, Optional
 
 import yfinance as yf
 import pandas as pd
@@ -39,21 +39,23 @@ def _extract_close(df: pd.DataFrame, ticker: str) -> pd.Series:
 class MarketAnalyst:
     """
     MVP swing analyst (Daily):
-      BUY if:
-        Close > SMA200
-        SMA50 > SMA200
-        RSI14 > 50
-        (score >= 80)
+      BUY if score >= 80 using:
+        Close > SMA200 (40)
+        SMA50 > SMA200 (30)
+        RSI14 > 50 (30)
       SELL if:
         Close < SMA200 OR RSI14 < 40
-      else WAIT
     """
     def __init__(self, lookback_days: int = 365):
         self.lookback_days = lookback_days
 
-    def analyze(self, tickers: List[str]) -> List[MarketSignal]:
-        now = datetime.now(timezone.utc)
+    def analyze(self, tickers: List[str], as_of: Optional[datetime] = None) -> List[MarketSignal]:
+        # as_of is treated as "now" for backtests
+        now = as_of.astimezone(timezone.utc) if as_of else datetime.now(timezone.utc)
+
         out: List[MarketSignal] = []
+        end_dt = (now + timedelta(days=1)).date().isoformat()  # include as_of day
+        start_dt = (now - timedelta(days=self.lookback_days)).date().isoformat()
 
         for t in tickers:
             reasons = []
@@ -63,7 +65,8 @@ class MarketAnalyst:
             try:
                 df = yf.download(
                     t,
-                    period=f"{self.lookback_days}d",
+                    start=start_dt,
+                    end=end_dt,
                     interval="1d",
                     auto_adjust=True,
                     progress=False,
@@ -101,7 +104,6 @@ class MarketAnalyst:
                     action = Action.SELL
                     score = 0
                 else:
-                    # BUY scoring
                     if c > s200:
                         score += 40
                     else:
