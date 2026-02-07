@@ -1,0 +1,4 @@
+AAPL  FINAL=Action.WAIT  (market=Action.BUY;news=NewsState.TRADE_OK;score=100;MAX_BUYS_REACHED)
+MSFT  FINAL=Action.WAIT  (market=Action.BUY;news=NewsState.TRADE_OK;score=100;MAX_BUYS_REACHED)
+NVDA  FINAL=Action.WAIT  (market=Action.BUY;news=NewsState.TRADE_OK;score=100;MAX_BUYS_REACHED)
+TSLA  FINAL=Action.WAIT  (market=Action.BUY;news=NewsState.WAIT;score=100;flags=BLOCKED_BY_NEWS;CALENDAR_EXPIRED)

@@ -1,0 +1,53 @@
+[
+  {
+    "ticker": "AAPL",
+    "action": "WAIT",
+    "news_state": "TRADE_OK",
+    "market_action": "BUY",
+    "score": 100,
+    "reason_codes": [
+      "MAX_BUYS_REACHED"
+    ],
+    "timestamp": "2025-11-25T00:00:00Z",
+    "flags": []
+  },
+  {
+    "ticker": "MSFT",
+    "action": "SELL",
+    "news_state": "TRADE_OK",
+    "market_action": "SELL",
+    "score": 0,
+    "reason_codes": [
+      "RSI_VERY_WEAK"
+    ],
+    "timestamp": "2025-11-25T00:00:00Z",
+    "flags": []
+  },
+  {
+    "ticker": "NVDA",
+    "action": "SELL",
+    "news_state": "TRADE_OK",
+    "market_action": "SELL",
+    "score": 0,
+    "reason_codes": [
+      "RSI_VERY_WEAK"
+    ],
+    "timestamp": "2025-11-25T00:00:00Z",
+    "flags": []
+  },
+  {
+    "ticker": "TSLA",
+    "action": "WAIT",
+    "news_state": "WAIT",
+    "market_action": "SELL",
+    "score": 0,
+    "reason_codes": [
+      "CALENDAR_EXPIRED",
+      "RSI_VERY_WEAK"
+    ],
+    "timestamp": "2025-11-25T00:00:00Z",
+    "flags": [
+      "BLOCKED_BY_NEWS"
+    ]
+  }
+]
