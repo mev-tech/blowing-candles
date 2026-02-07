@@ -7,18 +7,17 @@ class NewsState(str, Enum):
     TRADE_OK = "TRADE_OK"
     WAIT = "WAIT"
     NO_TRADE = "NO_TRADE"
-    MANAGE = "MANAGE"
-    EXIT_RECOMMENDED = "EXIT_RECOMMENDED"
-    EXIT_NOW = "EXIT_NOW"
 
 class Action(str, Enum):
     BUY = "BUY"
     SELL = "SELL"
     WAIT = "WAIT"
     IGNORE = "IGNORE"
-    MANAGE = "MANAGE"
-    EXIT_RECOMMENDED = "EXIT_RECOMMENDED"
-    EXIT_NOW = "EXIT_NOW"
+
+class Confidence(str, Enum):
+    HIGH = "HIGH"
+    LOW = "LOW"
+    NA = "NA"
 
 class NewsSignal(BaseModel):
     ticker: str
@@ -30,8 +29,10 @@ class NewsSignal(BaseModel):
 
 class MarketSignal(BaseModel):
     ticker: str
-    action: Action                # BUY/SELL/WAIT (MVP uses BUY/WAIT)
-    score: int = 0                # 0-100
+    action: Action
+    score: int = 0
+    confidence: Confidence = Confidence.NA
+    tags: List[str] = []
     reason_codes: List[str] = []
     timestamp: datetime
 
@@ -41,5 +42,7 @@ class FinalSignal(BaseModel):
     news_state: NewsState
     market_action: Action
     score: int = 0
+    confidence: Confidence = Confidence.NA
+    tags: List[str] = []
     reason_codes: List[str] = []
     timestamp: datetime

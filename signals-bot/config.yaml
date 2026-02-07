@@ -10,8 +10,13 @@ news:
   local_earnings_calendar: earnings_calendar.json
 
 policy:
-  max_buys_per_day: 99999999
-  cooldown_minutes: 0
+  max_buys_per_day: 99999999999 # 2
+  cooldown_minutes: 0 # 240
+
+strategy:
+  entry_mode: conservative   # opportunistic | balanced | conservative
+  buy_high_score: 80     # HIGH confidence BUY threshold
+  buy_low_score: 65      # LOW confidence BUY threshold (balanced/opportunistic)
 
 output:
   text_file: signals.txt

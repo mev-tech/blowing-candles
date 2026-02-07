@@ -20,6 +20,11 @@ def _as_utc_dt(date_str: str) -> datetime:
 
 def main():
     cfg = yaml.safe_load(Path("config.yaml").read_text())
+    strategy = cfg.get("strategy", {})
+    entry_mode = strategy.get("entry_mode", "balanced")
+    buy_high = int(strategy.get("buy_high_score", 80))
+    buy_low = int(strategy.get("buy_low_score", 65))
+
 
     # read as_of from env or config? simplest: file "asof.txt" or env
     # but we will parse CLI args via module -m by reading argv quickly
@@ -40,7 +45,11 @@ def main():
         earnings_block_hours=cfg["news"]["earnings_block_hours"],
         local_calendar_path=local_cal
     )
-    analyst = MarketAnalyst(lookback_days=365)
+    analyst = MarketAnalyst(
+    lookback_days=365,
+    buy_high_score=buy_high,
+    buy_low_score=buy_low
+    )
 
     # Use separate state/audit so you don't pollute live state
     store = StateStore(Path(args.sim_state))
@@ -49,6 +58,7 @@ def main():
         news_ttl_minutes=cfg["news"]["ttl_minutes"],
         max_buys_per_day=cfg.get("policy", {}).get("max_buys_per_day", 2),
         cooldown_minutes=cfg.get("policy", {}).get("cooldown_minutes", 240),
+        entry_mode=entry_mode,
         state_store=store
     )
 
