@@ -6,21 +6,20 @@
     "market_action": "BUY",
     "score": 100,
     "reason_codes": [],
-    "timestamp": "2026-02-07T14:34:05.539057Z",
+    "timestamp": "2026-02-07T14:47:15.465069Z",
     "flags": []
   },
   {
     "ticker": "MSFT",
-    "action": "WAIT",
+    "action": "SELL",
     "news_state": "TRADE_OK",
-    "market_action": "WAIT",
+    "market_action": "SELL",
     "score": 0,
     "reason_codes": [
       "BELOW_SMA200",
-      "SMA50_BELOW_SMA200",
-      "RSI_WEAK"
+      "RSI_VERY_WEAK"
     ],
-    "timestamp": "2026-02-07T14:34:05.539057Z",
+    "timestamp": "2026-02-07T14:47:15.465069Z",
     "flags": []
   },
   {
@@ -33,7 +32,7 @@
       "EARNINGS_LT_48H",
       "RSI_WEAK"
     ],
-    "timestamp": "2026-02-07T14:34:05.539057Z",
+    "timestamp": "2026-02-07T14:47:15.465069Z",
     "flags": []
   },
   {
@@ -45,7 +44,7 @@
     "reason_codes": [
       "RSI_WEAK"
     ],
-    "timestamp": "2026-02-07T14:34:05.539057Z",
+    "timestamp": "2026-02-07T14:47:15.465069Z",
     "flags": []
   }
 ]

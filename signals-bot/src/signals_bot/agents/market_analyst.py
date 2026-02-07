@@ -19,28 +19,18 @@ def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
     return rsi.fillna(0)
 
 def _extract_close(df: pd.DataFrame, ticker: str) -> pd.Series:
-    """
-    yfinance can return:
-      A) columns: ['Open','High','Low','Close','Volume',...]
-      B) MultiIndex columns: level0=Price field, level1=Ticker
-    We normalize to a Series of closes.
-    """
     if df is None or df.empty:
         raise ValueError("EMPTY_DF")
 
-    # MultiIndex columns case
     if isinstance(df.columns, pd.MultiIndex):
-        # Prefer ('Close', ticker)
         if ("Close", ticker) in df.columns:
             return df[("Close", ticker)].dropna()
-        # Sometimes levels are swapped or tickers different case
         upper = ticker.upper()
         candidates = [c for c in df.columns if c[0] == "Close" and str(c[1]).upper() == upper]
         if candidates:
             return df[candidates[0]].dropna()
         raise KeyError("CLOSE_NOT_FOUND_MULTIINDEX")
 
-    # Flat columns case
     if "Close" in df.columns:
         return df["Close"].dropna()
 
@@ -53,6 +43,9 @@ class MarketAnalyst:
         Close > SMA200
         SMA50 > SMA200
         RSI14 > 50
+        (score >= 80)
+      SELL if:
+        Close < SMA200 OR RSI14 < 40
       else WAIT
     """
     def __init__(self, lookback_days: int = 365):
@@ -74,12 +67,11 @@ class MarketAnalyst:
                     interval="1d",
                     auto_adjust=True,
                     progress=False,
-                    group_by="column",   # helps but still can be MultiIndex in some versions
+                    group_by="column",
                 )
 
                 close = _extract_close(df, t)
 
-                # Need enough history for SMA200
                 if len(close) < 210:
                     out.append(MarketSignal(
                         ticker=t,
@@ -99,22 +91,33 @@ class MarketAnalyst:
                 s200 = float(sma200.iloc[-1])
                 r = float(rsi14.iloc[-1])
 
-                if c > s200:
-                    score += 40
-                else:
+                # SELL conditions (risk-first)
+                if c < s200:
                     reasons.append("BELOW_SMA200")
+                if r < 40:
+                    reasons.append("RSI_VERY_WEAK")
 
-                if s50 > s200:
-                    score += 30
+                if ("BELOW_SMA200" in reasons) or ("RSI_VERY_WEAK" in reasons):
+                    action = Action.SELL
+                    score = 0
                 else:
-                    reasons.append("SMA50_BELOW_SMA200")
+                    # BUY scoring
+                    if c > s200:
+                        score += 40
+                    else:
+                        reasons.append("BELOW_SMA200")
 
-                if r > 50:
-                    score += 30
-                else:
-                    reasons.append("RSI_WEAK")
+                    if s50 > s200:
+                        score += 30
+                    else:
+                        reasons.append("SMA50_BELOW_SMA200")
 
-                action = Action.BUY if score >= 80 else Action.WAIT
+                    if r > 50:
+                        score += 30
+                    else:
+                        reasons.append("RSI_WEAK")
+
+                    action = Action.BUY if score >= 80 else Action.WAIT
 
             except Exception as e:
                 action = Action.WAIT

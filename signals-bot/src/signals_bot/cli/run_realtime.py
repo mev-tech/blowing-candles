@@ -30,13 +30,15 @@ def main():
     for f in final:
         flags = []
 
-        # Flag when market wanted an action but news/gov blocked it
+        # Blocked by stale data (governor forced WAIT due to stale/news missing)
+        if "DATA_STALE" in (f.reason_codes or []):
+            flags.append("BLOCKED_BY_STALE_DATA")
+
+        # Blocked by news (market wanted action, final differs, and news isn't TRADE_OK)
         if f.market_action in (Action.BUY, Action.SELL) and f.action != f.market_action:
-            # likely blocked by news policy
             if f.news_state in (NewsState.NO_TRADE, NewsState.WAIT):
                 flags.append("BLOCKED_BY_NEWS")
 
-        # Build human line
         line = (
             f"{f.ticker}  FINAL={f.action}  "
             f"(market={f.market_action};news={f.news_state};score={f.score}"
@@ -48,7 +50,6 @@ def main():
         line += ")"
         lines.append(line)
 
-        # Add flags to JSON output too
         d = f.model_dump(mode="json")
         d["flags"] = flags
         payload.append(d)
