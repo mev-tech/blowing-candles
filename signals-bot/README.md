@@ -219,6 +219,53 @@ Architecture Evolution
 - Microfrontends
   - Only if needed (otherwise keep it simple)
 
+LLM / Agentic AI Notes (for README)
+
+What stays deterministic (recommended)
+- MarketAnalyst calculations (SMA/RSI/score)
+- TradeGovernor policy engine (cooldown, max buys/day, TTL, fail-safe)
+- State + audit logging (reproducibility, verification)
+- Earnings calendar validation (missing/expired checks)
+
+What LLMs are great for (high-value additions)
+1) News interpretation (biggest win)
+   - Read headlines / filings summaries
+   - Classify impact (positive/negative/mixed)
+   - Rate severity (low/medium/high) + horizon (intraday/multi-week)
+   - Output structured tags: HIGH_RISK_NEWS, GUIDANCE_CUT, SEC_PROBE, M&A, MACRO_SHOCK
+   - Always include citations/links and TTL to avoid stale decisions
+
+2) Signal reviewer (second opinion)
+   - Given deterministic outputs (score/reasons/tags), an LLM can sanity-check logic
+   - Highlight conflicts (e.g., technical BUY but high news risk)
+   - Suggest: WAIT, reduced size, tighter stop, confirmation rules
+   - Should remain advisory; Governor remains the final authority
+
+3) Auto-generated reports
+   - From logs/*.jsonl and trades.csv: daily/weekly summaries
+   - Explain why a signal flipped BUY->SELL
+   - Show top reasons/tags for blocks and trend changes
+
+4) Strategy research (offline)
+   - Analyze batches of backtests to identify whipsaw patterns
+   - Propose minimal rule changes (still implemented deterministically)
+
+5) UI assistant (chat in React UI)
+   - Answer questions like:
+     - “Why is TSLA blocked today?”
+     - “Show AAPL low-confidence entries in January”
+     - “Worst trades last quarter and why”
+   - UI chat queries local audit/trade data; LLM explains results
+
+Agentic orchestration (optional)
+- Orchestrator decides when to call expensive LLM tools:
+  - only run News Agent when MarketAnalyst produces BUY/SELL
+  - deep scan only on high volatility or large score changes
+- Keep strict schemas + fail-safe defaults (WAIT) on any uncertainty/errors
+
+-------------------------------------------------------------------------------
+
+
 Roadmap by Releases
 
 v1.0 — MVP (Current)
@@ -257,3 +304,39 @@ Goal: always-on agent
 v1.5 — Split & Scale (Optional)
 - Microservices split (market / news / governor / backtester)
 - Microfrontends only if justified
+
+Roadmap Extension (LLMs + Production Stack)
+
+v1.7 — LLM Phase 1: News Intelligence MVP
+- Add News Intelligence Agent (LLM + curated sources)
+- Output: news_state, risk_tags, confidence, citations, TTL
+- Governor consumes only structured outputs (no free-text decisions)
+
+v1.8 — LLM Phase 2: Market Reviewer / Explainer
+- Add “Reviewer Agent” that explains signals and flags inconsistencies
+- Produces advisory tags (e.g., LLM_RISK_NOTE, CONFIRMATION_SUGGESTED)
+- No authority to override Governor unless via constrained tags
+
+v1.9 — LLM Phase 3: Report Generator
+- Daily/weekly report generation from audit + ledger
+- Summaries: changes, top movers, blocks, and key reasons (with links)
+
+v1.10 — LLM Phase 4: UI Copilot
+- Chat in UI to query audit/trades/state
+- “Ask the bot” style: explain signals, show stats, filter trades, interpret news tags
+- Still read-only / advisory by default
+
+v1.11 — Production-like Stack (optional)
+If a production stack makes sense, migrate to a more “real app” setup:
+- AWS Lambda + SST (infrastructure, deploys, environments)
+- Local dev parity with LocalStack (S3/SQS/EventBridge/etc.)
+- Drizzle (DB schema/migrations) + Postgres (or DynamoDB if simpler)
+- Biome (format/lint) + full test suite
+- Vitest integration tests + LocalStack-backed e2e tests
+- Strong observability: structured logs, tracing, metrics
+- Contract-first APIs (OpenAPI) for UI + services
+
+How this maps to the project
+- The deterministic core (Analyst/Governor) remains the same logic
+- LLM services become optional adapters (news/reviewer/reporting)
+- UI talks to a stable API layer (even if the internals later split into microservices)
