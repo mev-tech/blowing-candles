@@ -274,6 +274,8 @@ v1.0 — MVP (Current)
 - run_asof + stats_periods
 - Earnings calendar helper
 
+v2.0 - MVP2 (go to C#)
+
 v1.1 — Performance & Backtesting Usability
 Goal: 1-year resolution in decent time
 - run_range (single process, internal date loop)
