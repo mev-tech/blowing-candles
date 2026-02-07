@@ -1,4 +1,0 @@
-AAPL  FINAL=Action.WAIT  (market=Action.WAIT;news=NewsState.TRADE_OK;score=70;SMA50_BELOW_SMA200)
-MSFT  FINAL=Action.WAIT  (market=Action.BUY;news=NewsState.TRADE_OK;score=100;COOLDOWN_ACTIVE)
-NVDA  FINAL=Action.WAIT  (market=Action.WAIT;news=NewsState.TRADE_OK;score=70;RSI_WEAK)
-TSLA  FINAL=Action.WAIT  (market=Action.WAIT;news=NewsState.WAIT;score=70;CALENDAR_EXPIRED,SMA50_BELOW_SMA200)
