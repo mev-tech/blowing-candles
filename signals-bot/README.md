@@ -305,6 +305,10 @@ v1.5 — Split & Scale (Optional)
 - Microservices split (market / news / governor / backtester)
 - Microfrontends only if justified
 
+v1.6 (or sooner) - Rationalise
+- Introduce concepts of trade sizings
+- Sizing that learns from backtests
+
 Roadmap Extension (LLMs + Production Stack)
 
 v1.7 — LLM Phase 1: News Intelligence MVP
