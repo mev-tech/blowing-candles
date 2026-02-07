@@ -26,13 +26,6 @@ class NewsSentinel:
         self._local_calendar = self._load_local_calendar(local_calendar_path)
 
     def _load_local_calendar(self, path: Optional[str]) -> Dict[str, List[datetime]]:
-        """
-        Accepts:
-          { "AAPL": "2026-02-05T21:00:00Z" }
-        OR
-          { "AAPL": ["2026-02-05T21:00:00Z", "2026-05-12T21:00:00Z"] }
-        Stores as { "AAPL": [dt1, dt2, ...] } UTC sorted.
-        """
         if not path:
             return {}
         p = Path(path)
@@ -62,6 +55,9 @@ class NewsSentinel:
                 out[t] = dts
 
         return out
+
+    def _calendar_has_ticker(self, t: str) -> bool:
+        return t.upper() in self._local_calendar
 
     def _next_from_local(self, t: str, now: datetime) -> Optional[datetime]:
         arr = self._local_calendar.get(t.upper())
@@ -106,11 +102,24 @@ class NewsSentinel:
             valid_until = None
 
             try:
-                # 1) local calendar first
+                in_calendar = self._calendar_has_ticker(t)
                 earnings_dt = self._next_from_local(t, now)
 
-                # 2) yfinance fallback
-                if earnings_dt is None:
+                # If ticker exists but no future earnings -> explicit expired (deterministic)
+                if in_calendar and earnings_dt is None:
+                    state = NewsState.WAIT
+                    reasons.append("CALENDAR_EXPIRED")
+                    out.append(NewsSignal(
+                        ticker=t,
+                        state=state,
+                        reason_codes=reasons,
+                        valid_until=None,
+                        timestamp=now,
+                    ))
+                    continue
+
+                # If not in calendar, try yfinance fallback
+                if not in_calendar and earnings_dt is None:
                     dt_yf = self._extract_next_earnings_yf(t)
                     if dt_yf:
                         if dt_yf.tzinfo is None:

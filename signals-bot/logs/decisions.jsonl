@@ -26,3 +26,11 @@
 {"ts": "2026-02-07T15:13:33.699664Z", "ticker": "MSFT", "final": "Action.SELL", "market": "Action.SELL", "news": "NewsState.TRADE_OK", "score": 0, "flags": [], "reasons": ["BELOW_SMA200", "RSI_VERY_WEAK"]}
 {"ts": "2026-02-07T15:13:33.699673Z", "ticker": "NVDA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.TRADE_OK", "score": 70, "flags": [], "reasons": ["RSI_WEAK"]}
 {"ts": "2026-02-07T15:13:33.699680Z", "ticker": "TSLA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.TRADE_OK", "score": 70, "flags": [], "reasons": ["RSI_WEAK"]}
+{"ts": "2026-02-07T15:15:41.236800Z", "ticker": "AAPL", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.TRADE_OK", "score": 100, "flags": [], "reasons": ["MAX_BUYS_REACHED"]}
+{"ts": "2026-02-07T15:15:41.236814Z", "ticker": "MSFT", "final": "Action.SELL", "market": "Action.SELL", "news": "NewsState.TRADE_OK", "score": 0, "flags": [], "reasons": ["BELOW_SMA200", "RSI_VERY_WEAK"]}
+{"ts": "2026-02-07T15:15:41.236823Z", "ticker": "NVDA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.TRADE_OK", "score": 70, "flags": [], "reasons": ["RSI_WEAK"]}
+{"ts": "2026-02-07T15:15:41.236830Z", "ticker": "TSLA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.TRADE_OK", "score": 70, "flags": [], "reasons": ["RSI_WEAK"]}
+{"ts": "2026-02-07T15:16:20.167207Z", "ticker": "AAPL", "final": "Action.WAIT", "market": "Action.BUY", "news": "NewsState.TRADE_OK", "score": 100, "flags": [], "reasons": ["MAX_BUYS_REACHED"]}
+{"ts": "2026-02-07T15:16:20.167221Z", "ticker": "MSFT", "final": "Action.SELL", "market": "Action.SELL", "news": "NewsState.TRADE_OK", "score": 0, "flags": [], "reasons": ["BELOW_SMA200", "RSI_VERY_WEAK"]}
+{"ts": "2026-02-07T15:16:20.167230Z", "ticker": "NVDA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.TRADE_OK", "score": 70, "flags": [], "reasons": ["RSI_WEAK"]}
+{"ts": "2026-02-07T15:16:20.167237Z", "ticker": "TSLA", "final": "Action.WAIT", "market": "Action.WAIT", "news": "NewsState.WAIT", "score": 70, "flags": [], "reasons": ["CALENDAR_EXPIRED", "RSI_WEAK"]}
