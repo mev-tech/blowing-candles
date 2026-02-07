@@ -8,7 +8,7 @@
     "reason_codes": [
       "MAX_BUYS_REACHED"
     ],
-    "timestamp": "2026-02-07T15:01:34.718502Z",
+    "timestamp": "2026-02-07T15:13:33.699124Z",
     "flags": []
   },
   {
@@ -21,20 +21,19 @@
       "BELOW_SMA200",
       "RSI_VERY_WEAK"
     ],
-    "timestamp": "2026-02-07T15:01:34.718502Z",
+    "timestamp": "2026-02-07T15:13:33.699124Z",
     "flags": []
   },
   {
     "ticker": "NVDA",
-    "action": "IGNORE",
-    "news_state": "NO_TRADE",
+    "action": "WAIT",
+    "news_state": "TRADE_OK",
     "market_action": "WAIT",
     "score": 70,
     "reason_codes": [
-      "EARNINGS_LT_48H",
       "RSI_WEAK"
     ],
-    "timestamp": "2026-02-07T15:01:34.718502Z",
+    "timestamp": "2026-02-07T15:13:33.699124Z",
     "flags": []
   },
   {
@@ -46,7 +45,7 @@
     "reason_codes": [
       "RSI_WEAK"
     ],
-    "timestamp": "2026-02-07T15:01:34.718502Z",
+    "timestamp": "2026-02-07T15:13:33.699124Z",
     "flags": []
   }
 ]
