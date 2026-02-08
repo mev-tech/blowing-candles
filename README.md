@@ -1,5 +1,8 @@
 signals-bot
 
+[![CI](https://github.com/mev/signals-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/mev/signals-bot/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/mev/signals-bot/graph/badge.svg)](https://codecov.io/gh/mev/signals-bot)
+
 Decision-based trading signal system (manual execution)
 
 ============================================================
