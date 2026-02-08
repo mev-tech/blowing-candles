@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS base
 
 WORKDIR /app
 
@@ -10,6 +10,21 @@ COPY pyproject.toml /app/pyproject.toml
 COPY src /app/src
 COPY config.yaml /app/config.yaml
 COPY earnings_calendar.json /app/earnings_calendar.json
+
+# test stage: includes pytest and test code
+FROM base AS test
+
+COPY requirements.txt /app/requirements.txt
+COPY tests /app/tests
+
+RUN pip install --upgrade pip \
+ && pip install -e . \
+ && pip install -r requirements.txt
+
+CMD ["pytest", "-q"]
+
+# production stage: only app deps, no pytest
+FROM base AS app
 
 RUN pip install --upgrade pip \
  && pip install -e . \

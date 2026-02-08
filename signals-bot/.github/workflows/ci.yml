@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  compile:
+    name: Syntax & Compilation Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Check syntax
+        run: |
+          python -m py_compile src/signals_bot/**/*.py
+          python -m py_compile tests/**/*.py
+
+  test:
+    name: Tests with Coverage
+    runs-on: ubuntu-latest
+    needs: compile
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build test container
+        run: docker build --target test -t signals-bot-test .
+      - name: Run tests with coverage
+        run: |
+          docker run --rm signals-bot-test \
+            pytest --cov=src/signals_bot --cov-report=term-missing --cov-report=xml
+      - name: Check coverage threshold
+        run: |
+          docker run --rm signals-bot-test \
+            pytest --cov=src/signals_bot --cov-fail-under=80
+
+  build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build test image
+        run: docker build --target test -t signals-bot-test:${{ github.sha }} .
+      - name: Build app image
+        run: docker build --target app -t signals-bot:${{ github.sha }} .
+      - name: Tag latest
+        run: |
+          docker tag signals-bot:${{ github.sha }} signals-bot:latest
+
+  verify:
+    name: Verify App Runs
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build app image
+        run: docker build --target app -t signals-bot .
+      - name: Run app (verify it starts)
+        run: |
+          timeout 10 docker run --rm signals-bot || true

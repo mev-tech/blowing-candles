@@ -4,7 +4,7 @@ from typing import List, Optional
 import yfinance as yf
 import pandas as pd
 
-from signals_bot.core.models import MarketSignal, Action
+from signals_bot.core.models import MarketSignal, Action, Confidence
 
 def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
     delta = series.diff()
@@ -38,48 +38,60 @@ def _extract_close(df: pd.DataFrame, ticker: str) -> pd.Series:
 
 class MarketAnalyst:
     """
-    MVP swing analyst (Daily):
-      BUY if score >= 80 using:
-        Close > SMA200 (40)
-        SMA50 > SMA200 (30)
-        RSI14 > 50 (30)
-      SELL if:
-        Close < SMA200 OR RSI14 < 40
+    Daily swing analyst.
+    Outputs:
+      - score (0..100)
+      - confidence HIGH/LOW for BUY candidates
+      - tags: e.g. LOW_CONFIDENCE_BUY, RSI_WEAK, BELOW_SMA200
     """
-    def __init__(self, lookback_days: int = 365):
+    def __init__(self, lookback_days: int = 365, buy_high_score: int = 80, buy_low_score: int = 65):
         self.lookback_days = lookback_days
+        self.buy_high_score = buy_high_score
+        self.buy_low_score = buy_low_score
 
     def analyze(self, tickers: List[str], as_of: Optional[datetime] = None) -> List[MarketSignal]:
-        # as_of is treated as "now" for backtests
         now = as_of.astimezone(timezone.utc) if as_of else datetime.now(timezone.utc)
-
-        out: List[MarketSignal] = []
         end_dt = (now + timedelta(days=1)).date().isoformat()  # include as_of day
         start_dt = (now - timedelta(days=self.lookback_days)).date().isoformat()
 
+        out: List[MarketSignal] = []
+        # Batch download prices for all tickers to reduce network calls and rate limits
+        df_all = None
+        try:
+            df_all = yf.download(
+                tickers, start=start_dt, end=end_dt,
+                interval="1d", auto_adjust=True, progress=False, group_by="column",
+            )
+        except Exception:
+            df_all = None
+
         for t in tickers:
-            reasons = []
+            reasons: List[str] = []
+            tags: List[str] = []
             score = 0
             action = Action.WAIT
+            conf = Confidence.NA
 
             try:
-                df = yf.download(
-                    t,
-                    start=start_dt,
-                    end=end_dt,
-                    interval="1d",
-                    auto_adjust=True,
-                    progress=False,
-                    group_by="column",
-                )
-
+                df = df_all
+                if df is None:
+                    # as a fallback, try per-ticker download
+                    df = yf.download(
+                        t,
+                        start=start_dt,
+                        end=end_dt,
+                        interval="1d",
+                        auto_adjust=True,
+                        progress=False,
+                        group_by="column",
+                    )
                 close = _extract_close(df, t)
 
                 if len(close) < 210:
                     out.append(MarketSignal(
-                        ticker=t,
-                        action=Action.WAIT,
-                        score=0,
+                        ticker=t, action=Action.WAIT, score=0,
+                        confidence=Confidence.NA,
+                        tags=["NOT_ENOUGH_HISTORY"],
                         reason_codes=["NOT_ENOUGH_HISTORY"],
                         timestamp=now
                     ))
@@ -94,7 +106,7 @@ class MarketAnalyst:
                 s200 = float(sma200.iloc[-1])
                 r = float(rsi14.iloc[-1])
 
-                # SELL conditions (risk-first)
+                # SELL (risk-first) - unchanged
                 if c < s200:
                     reasons.append("BELOW_SMA200")
                 if r < 40:
@@ -102,8 +114,10 @@ class MarketAnalyst:
 
                 if ("BELOW_SMA200" in reasons) or ("RSI_VERY_WEAK" in reasons):
                     action = Action.SELL
+                    conf = Confidence.NA
                     score = 0
                 else:
+                    # Score components (unchanged)
                     if c > s200:
                         score += 40
                     else:
@@ -119,17 +133,38 @@ class MarketAnalyst:
                     else:
                         reasons.append("RSI_WEAK")
 
-                    action = Action.BUY if score >= 80 else Action.WAIT
+                    # Confidence tiers
+                    if score >= self.buy_high_score:
+                        action = Action.BUY
+                        conf = Confidence.HIGH
+                    elif score >= self.buy_low_score:
+                        # BUY candidate but low confidence
+                        action = Action.BUY
+                        conf = Confidence.LOW
+                        tags.append("LOW_CONFIDENCE_BUY")
+                    else:
+                        action = Action.WAIT
+                        conf = Confidence.NA
+
+                # Helpful tags (optional but nice)
+                if "RSI_WEAK" in reasons:
+                    tags.append("MOMENTUM_WEAK")
+                if "BELOW_SMA200" in reasons:
+                    tags.append("TREND_WEAK")
 
             except Exception as e:
                 action = Action.WAIT
                 score = 0
+                conf = Confidence.NA
                 reasons = ["MARKET_DATA_ERROR", type(e).__name__]
+                tags = ["MARKET_DATA_ERROR"]
 
             out.append(MarketSignal(
                 ticker=t,
                 action=action,
                 score=score,
+                confidence=conf,
+                tags=tags,
                 reason_codes=reasons,
                 timestamp=now
             ))

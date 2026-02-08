@@ -1,5 +1,8 @@
 signals-bot
 
+[![CI](https://github.com/mev/signals-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/mev/signals-bot/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/mev/signals-bot/graph/badge.svg)](https://codecov.io/gh/mev/signals-bot)
+
 Decision-based trading signal system (manual execution)
 
 ============================================================
@@ -79,11 +82,13 @@ docker run --rm -it -v "$PWD:/app" signals-bot bash
 
 DAILY WORKFLOW (MANUAL TRADING)
 
-docker build -t signals-bot . (only when code changes)
+```
+docker build -t signals-bot . # (only when code changes)
 docker run --rm -v "$PWD:/app" signals-bot
 cat signals.txt
 docker run --rm -v "$PWD:/app" -w /app signals-bot
 python -m signals_bot.cli.check_calendar
+```
 
 ============================================================
 

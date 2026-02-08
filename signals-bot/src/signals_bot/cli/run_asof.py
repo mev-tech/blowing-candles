@@ -3,6 +3,8 @@ from pathlib import Path
 from datetime import datetime, timezone
 import json
 import yaml
+import logging
+import sys
 
 from signals_bot.agents.news_sentinel import NewsSentinel
 from signals_bot.agents.market_analyst import MarketAnalyst
@@ -10,6 +12,8 @@ from signals_bot.agents.trade_governor import TradeGovernor
 from signals_bot.core.models import Action, NewsState
 from signals_bot.shared.state_store import StateStore
 from signals_bot.shared.audit import append_jsonl, utc_now_iso
+
+logger = logging.getLogger(__name__)
 
 def _as_utc_dt(date_str: str) -> datetime:
     # interpret YYYY-MM-DD as end-of-day UTC? we'll use noon UTC to avoid edge timezone issues
@@ -19,7 +23,13 @@ def _as_utc_dt(date_str: str) -> datetime:
     return dt.astimezone(timezone.utc)
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     cfg = yaml.safe_load(Path("config.yaml").read_text())
+    strategy = cfg.get("strategy", {})
+    entry_mode = strategy.get("entry_mode", "balanced")
+    buy_high = int(strategy.get("buy_high_score", 80))
+    buy_low = int(strategy.get("buy_low_score", 65))
+
 
     # read as_of from env or config? simplest: file "asof.txt" or env
     # but we will parse CLI args via module -m by reading argv quickly
@@ -40,7 +50,11 @@ def main():
         earnings_block_hours=cfg["news"]["earnings_block_hours"],
         local_calendar_path=local_cal
     )
-    analyst = MarketAnalyst(lookback_days=365)
+    analyst = MarketAnalyst(
+    lookback_days=365,
+    buy_high_score=buy_high,
+    buy_low_score=buy_low
+    )
 
     # Use separate state/audit so you don't pollute live state
     store = StateStore(Path(args.sim_state))
@@ -49,6 +63,7 @@ def main():
         news_ttl_minutes=cfg["news"]["ttl_minutes"],
         max_buys_per_day=cfg.get("policy", {}).get("max_buys_per_day", 2),
         cooldown_minutes=cfg.get("policy", {}).get("cooldown_minutes", 240),
+        entry_mode=entry_mode,
         state_store=store
     )
 
@@ -98,14 +113,21 @@ def main():
     out_txt = f"{args.out_prefix}_{args.asof}.signals.txt"
     out_json = f"{args.out_prefix}_{args.asof}.signals.json"
 
-    Path(out_txt).write_text("\n".join(lines) + "\n")
-    Path(out_json).write_text(json.dumps(payload, indent=2) + "\n")
+    # atomic writes
+    tmp_txt = Path(out_txt).parent / (Path(out_txt).name + ".tmp")
+    tmp_txt.write_text("\n".join(lines) + "\n")
+    tmp_txt.replace(Path(out_txt))
+
+    tmp_json = Path(out_json).parent / (Path(out_json).name + ".tmp")
+    tmp_json.write_text(json.dumps(payload, indent=2) + "\n")
+    tmp_json.replace(Path(out_json))
+
     append_jsonl(args.sim_audit, audit_rows)
 
-    print("\n".join(lines))
-    print(f"\nWrote: {out_txt}, {out_json}")
-    print(f"Sim audit: {args.sim_audit}")
-    print(f"Sim state: {args.sim_state}")
+    logger.info("\n".join(lines))
+    logger.info("Wrote: %s, %s", out_txt, out_json)
+    logger.info("Sim audit: %s", args.sim_audit)
+    logger.info("Sim state: %s", args.sim_state)
 
 if __name__ == "__main__":
     main()

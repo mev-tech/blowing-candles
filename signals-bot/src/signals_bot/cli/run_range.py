@@ -1,6 +1,9 @@
 from datetime import date, timedelta, datetime, timezone
 import subprocess
 import argparse
+import logging
+
+logger = logging.getLogger(__name__)
 
 def daterange(start: date, end: date):
     d = start
@@ -9,6 +12,7 @@ def daterange(start: date, end: date):
         d += timedelta(days=1)
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", required=True)
     ap.add_argument("--end", required=True)
@@ -20,7 +24,7 @@ def main():
 
     for d in daterange(start, end):
         ds = d.isoformat()
-        print(f"\n=== {ds} ===")
+        logger.info("=== %s ===", ds)
         subprocess.run([
             "python", "-m", "signals_bot.cli.run_asof",
             "--asof", ds,
