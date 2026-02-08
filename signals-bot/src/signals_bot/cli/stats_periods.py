@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from pathlib import Path
 from datetime import date, timedelta
 from typing import List, Dict, Any, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 def parse_jsonl(path: str) -> List[Dict[str, Any]]:
     rows = []
@@ -38,6 +41,7 @@ def normalize_action(s: str) -> str:
     return s
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     ap = argparse.ArgumentParser(description="Compute BUY->SELL holding periods from decisions.jsonl")
     ap.add_argument("--jsonl", default="logs/sim_decisions.jsonl", help="Path to audit JSONL")
     ap.add_argument("--ticker", required=True, help="Ticker to analyze (e.g., AAPL)")
@@ -71,7 +75,7 @@ def main():
         data = [(d,a) for d,a in data if d <= ed]
 
     if not data:
-        print(f"No data for {tkr} in {args.jsonl} within selected range.")
+        logger.info("No data for %s in %s within selected range.", tkr, args.jsonl)
         raise SystemExit(0)
 
     periods = []
@@ -92,26 +96,26 @@ def main():
                 open_buy = None
 
     # Print results
-    print(f"Ticker: {tkr}")
-    print(f"Range analyzed: {data[0][0].isoformat()} -> {data[-1][0].isoformat()}")
-    print("")
+    logger.info("Ticker: %s", tkr)
+    logger.info("Range analyzed: %s -> %s", data[0][0].isoformat(), data[-1][0].isoformat())
+    logger.info("")
 
     if not periods and open_buy is None:
-        print("No BUY->SELL periods found.")
+        logger.info("No BUY->SELL periods found.")
         raise SystemExit(0)
 
     for i, (b, s, days) in enumerate(periods, start=1):
-        print(f"[{i}] BUY {b.isoformat()} -> SELL {s.isoformat()} | holding: {days} days")
+        logger.info("[%d] BUY %s -> SELL %s | holding: %d days", i, b.isoformat(), s.isoformat(), days)
         if args.list_days:
-            print("    days:", ", ".join(daterange(b, s)))
-        print("")
+            logger.info("    days: %s", ", ".join(daterange(b, s)))
+        logger.info("")
 
     if open_buy is not None:
         days_open = (last_date - open_buy).days
-        print(f"[open] BUY {open_buy.isoformat()} -> (no SELL yet; last={last_date.isoformat()}) | holding so far: {days_open} days")
+        logger.info("[open] BUY %s -> (no SELL yet; last=%s) | holding so far: %d days", open_buy.isoformat(), last_date.isoformat(), days_open)
         if args.list_days:
-            print("    days:", ", ".join(daterange(open_buy, last_date)))
-        print("")
+            logger.info("    days: %s", ", ".join(daterange(open_buy, last_date)))
+        logger.info("")
 
 if __name__ == "__main__":
     main()

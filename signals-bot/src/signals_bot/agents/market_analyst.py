@@ -55,6 +55,15 @@ class MarketAnalyst:
         start_dt = (now - timedelta(days=self.lookback_days)).date().isoformat()
 
         out: List[MarketSignal] = []
+        # Batch download prices for all tickers to reduce network calls and rate limits
+        df_all = None
+        try:
+            df_all = yf.download(
+                tickers, start=start_dt, end=end_dt,
+                interval="1d", auto_adjust=True, progress=False, group_by="column",
+            )
+        except Exception:
+            df_all = None
 
         for t in tickers:
             reasons: List[str] = []
@@ -64,15 +73,18 @@ class MarketAnalyst:
             conf = Confidence.NA
 
             try:
-                df = yf.download(
-                    t,
-                    start=start_dt,
-                    end=end_dt,
-                    interval="1d",
-                    auto_adjust=True,
-                    progress=False,
-                    group_by="column",
-                )
+                df = df_all
+                if df is None:
+                    # as a fallback, try per-ticker download
+                    df = yf.download(
+                        t,
+                        start=start_dt,
+                        end=end_dt,
+                        interval="1d",
+                        auto_adjust=True,
+                        progress=False,
+                        group_by="column",
+                    )
                 close = _extract_close(df, t)
 
                 if len(close) < 210:

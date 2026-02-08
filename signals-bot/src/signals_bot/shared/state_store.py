@@ -41,7 +41,9 @@ class StateStore:
 
     def save(self, state: Dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(state, indent=2) + "\n")
+        tmp = self.path.parent / (self.path.name + ".tmp")
+        tmp.write_text(json.dumps(state, indent=2) + "\n")
+        tmp.replace(self.path)
 
     def reset_if_new_day(self, state: Dict[str, Any]) -> Dict[str, Any]:
         today = _utc_now().date().isoformat()

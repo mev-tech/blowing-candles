@@ -4,6 +4,9 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 import json
 import yaml
+import logging
+
+logger = logging.getLogger(__name__)
 
 def _parse_iso_to_utc(s: str) -> Optional[datetime]:
     try:
@@ -47,12 +50,13 @@ def _next_future(dts: List[datetime], now: datetime) -> Optional[datetime]:
     return None
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     cfg = yaml.safe_load(Path("config.yaml").read_text())
     watchlist = [str(t).upper() for t in cfg.get("watchlist", [])]
     cal_path = cfg.get("news", {}).get("local_earnings_calendar")
 
     if not cal_path:
-        print("ERROR: config.yaml -> news.local_earnings_calendar missing")
+        logger.error("ERROR: config.yaml -> news.local_earnings_calendar missing")
         raise SystemExit(1)
 
     cal = _load_calendar(cal_path)
@@ -72,27 +76,27 @@ def main():
         else:
             ok.append((t, nxt.isoformat().replace("+00:00", "Z")))
 
-    print(f"Now (UTC): {now.isoformat().replace('+00:00','Z')}")
-    print(f"Calendar file: {cal_path}")
-    print("")
+    logger.info("Now (UTC): %s", now.isoformat().replace('+00:00','Z'))
+    logger.info("Calendar file: %s", cal_path)
+    logger.info("")
 
     if ok:
-        print("OK (next earnings found):")
+        logger.info("OK (next earnings found):")
         for t, dt in ok:
-            print(f"  {t}: {dt}")
-        print("")
+            logger.info("  %s: %s", t, dt)
+        logger.info("")
 
     if expired:
-        print("EXPIRED (no future dates in calendar):")
+        logger.info("EXPIRED (no future dates in calendar):")
         for t, reason in expired:
-            print(f"  {t}: {reason}")
-        print("")
+            logger.info("  %s: %s", t, reason)
+        logger.info("")
 
     if missing:
-        print("MISSING (not present in calendar file):")
+        logger.info("MISSING (not present in calendar file):")
         for t in missing:
-            print(f"  {t}")
-        print("")
+            logger.info("  %s", t)
+        logger.info("")
 
     # Exit code: 0 if all ok, 2 if any issues
     if expired or missing:

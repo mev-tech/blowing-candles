@@ -79,11 +79,13 @@ docker run --rm -it -v "$PWD:/app" signals-bot bash
 
 DAILY WORKFLOW (MANUAL TRADING)
 
-docker build -t signals-bot . (only when code changes)
+```
+docker build -t signals-bot . # (only when code changes)
 docker run --rm -v "$PWD:/app" signals-bot
 cat signals.txt
 docker run --rm -v "$PWD:/app" -w /app signals-bot
 python -m signals_bot.cli.check_calendar
+```
 
 ============================================================
 
