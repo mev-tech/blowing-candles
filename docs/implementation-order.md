@@ -9,18 +9,18 @@ This document describes the order in which major system capabilities should be i
 - Defer Yahoo Finance integration until the internal logic is solid and testable.
 - Each phase should produce a working, testable capability.
 
-## Phase 1: Project Scaffold and Calendar Validator
+## Phase 1: Project Scaffold and Calendar Validator ✅
+
+**Status: COMPLETED**
 
 **Capabilities:** Check Calendar command
 
-**What to build:**
+**What was built:**
 - .NET solution structure (Domain, Application, Infrastructure, CLI projects)
 - YAML config loader
 - Earnings calendar reader
 - Clock abstraction (for deterministic testing of date comparisons)
 - Check Calendar CLI command with stdout and exit-code parity
-
-**Why first:** Deterministic, exercises real config and calendar contracts, no external data dependencies, creates reusable infrastructure for later phases.
 
 **Validation:** Golden tests comparing stdout and exit codes against Python reference output.
 
@@ -120,9 +120,9 @@ The following decisions should be made before or during the indicated phase:
 
 | Decision | Phase | Description |
 |----------|-------|-------------|
-| .NET target version | 1 | .NET 8 LTS or .NET 9 |
-| Test framework | 1 | xUnit, NUnit, or MSTest |
-| YAML library | 1 | YamlDotNet or alternative |
+| .NET target version | 1 ✅ | .NET 8 LTS |
+| Test framework | 1 ✅ | xUnit |
+| YAML library | 1 ✅ | YamlDotNet |
 | JSON serializer | 3 | System.Text.Json or Newtonsoft.Json |
 | State reset behavior | 4 | Preserve real-clock reset or fix to use as_of |
 | Run Range architecture | 7 | In-process loop or subprocess per day |
