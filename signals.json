@@ -1,0 +1,34 @@
+[
+  {
+    "ticker": "AAPL",
+    "action": "WAIT",
+    "newsState": "WAIT",
+    "marketAction": "WAIT",
+    "reason": "NOT_IMPLEMENTED",
+    "timestamp": "2026-03-07T18:43:29.0723259\u002B00:00"
+  },
+  {
+    "ticker": "MSFT",
+    "action": "WAIT",
+    "newsState": "WAIT",
+    "marketAction": "WAIT",
+    "reason": "NOT_IMPLEMENTED",
+    "timestamp": "2026-03-07T18:43:29.0723666\u002B00:00"
+  },
+  {
+    "ticker": "NVDA",
+    "action": "WAIT",
+    "newsState": "WAIT",
+    "marketAction": "WAIT",
+    "reason": "NOT_IMPLEMENTED",
+    "timestamp": "2026-03-07T18:43:29.0723667\u002B00:00"
+  },
+  {
+    "ticker": "TSLA",
+    "action": "WAIT",
+    "newsState": "WAIT",
+    "marketAction": "WAIT",
+    "reason": "NOT_IMPLEMENTED",
+    "timestamp": "2026-03-07T18:43:29.0723668\u002B00:00"
+  }
+]

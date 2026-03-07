@@ -1,0 +1,4 @@
+AAPL: Action.WAIT | NewsState.WAIT | Action.WAIT | NOT_IMPLEMENTED
+MSFT: Action.WAIT | NewsState.WAIT | Action.WAIT | NOT_IMPLEMENTED
+NVDA: Action.WAIT | NewsState.WAIT | Action.WAIT | NOT_IMPLEMENTED
+TSLA: Action.WAIT | NewsState.WAIT | Action.WAIT | NOT_IMPLEMENTED
