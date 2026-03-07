@@ -4,6 +4,7 @@ using BlowingCandles.Infrastructure.Config;
 
 namespace BlowingCandles.Infrastructure.Tests;
 
+[Collection("Console")]
 public sealed class CheckCalendarHandlerTests
 {
     [Fact]

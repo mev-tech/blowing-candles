@@ -45,5 +45,7 @@ public sealed record StateConfig
 
 public sealed record AuditConfig
 {
-    public string JsonlPath { get; init; } = "logs/decisions.jsonl";
+    public string? JsonlPath { get; init; }
+
+    public string? ResolvedJsonlPath { get; init; }
 }

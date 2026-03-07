@@ -229,7 +229,11 @@ BlowingCandles/
 │   │   ├── Models/
 │   │   │   ├── NewsSignal.cs
 │   │   │   ├── MarketSignal.cs
-│   │   │   └── FinalSignal.cs
+│   │   │   ├── FinalSignal.cs
+│   │   │   ├── AuditRecord.cs
+│   │   │   ├── HoldingPeriod.cs
+│   │   │   ├── HoldingPeriodAnalysis.cs
+│   │   │   └── OpenPosition.cs
 │   │   ├── Interfaces/
 │   │   │   ├── IClock.cs
 │   │   │   ├── IEarningsCalendar.cs
@@ -237,7 +241,8 @@ BlowingCandles/
 │   │   └── Services/
 │   │       ├── EarningsGate.cs
 │   │       ├── TechnicalScorer.cs
-│   │       └── TradeGovernor.cs
+│   │       ├── TradeGovernor.cs
+│   │       └── HoldingPeriodCalculator.cs
 │   ├── BlowingCandles.Infrastructure/
 │   │   ├── Config/
 │   │   │   ├── AppConfig.cs
@@ -249,7 +254,8 @@ BlowingCandles/
 │   │   │   └── JsonStateStore.cs
 │   │   ├── Audit/
 │   │   │   ├── JsonlAuditWriter.cs
-│   │   │   └── JsonlAuditReader.cs
+│   │   │   ├── JsonlAuditReader.cs
+│   │   │   └── AuditReadResult.cs
 │   │   ├── Calendar/
 │   │   │   └── EarningsCalendarFile.cs
 │   │   └── MarketData/

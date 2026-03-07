@@ -33,6 +33,7 @@ public sealed class YamlConfigLoader
     {
         var baseDirectory = Path.GetDirectoryName(Path.GetFullPath(path)) ?? Directory.GetCurrentDirectory();
         var localEarningsCalendar = NormalizeOptionalString(config.News?.LocalEarningsCalendar);
+        var auditJsonlPath = NormalizeOptionalString(config.Audit?.JsonlPath);
 
         return config with
         {
@@ -58,7 +59,10 @@ public sealed class YamlConfigLoader
             },
             Audit = (config.Audit ?? new AuditConfig()) with
             {
-                JsonlPath = ResolvePath(baseDirectory, config.Audit?.JsonlPath ?? "logs/decisions.jsonl")
+                JsonlPath = auditJsonlPath,
+                ResolvedJsonlPath = auditJsonlPath is null
+                    ? null
+                    : ResolvePath(baseDirectory, auditJsonlPath)
             },
             Policy = config.Policy ?? new PolicyConfig()
         };

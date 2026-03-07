@@ -24,18 +24,20 @@ This document describes the order in which major system capabilities should be i
 
 **Validation:** Golden tests comparing stdout and exit codes against Python reference output.
 
-## Phase 2: Audit Analysis
+## Phase 2: Audit Analysis ✅
+
+**Status: COMPLETED**
 
 **Capabilities:** Stats Periods command
 
-**What to build:**
-- JSONL audit log reader
-- Holding period calculation logic
-- Stats Periods CLI command
+**What was built:**
+- JSONL audit log reader (`JsonlAuditReader`, `AuditReadResult`)
+- Domain models (`AuditRecord`, `HoldingPeriod`, `OpenPosition`, `HoldingPeriodAnalysis`)
+- Holding period calculation logic (`HoldingPeriodCalculator`)
+- Stats Periods CLI command (`StatsPeriodsHandler`)
+- Extended `AppConfig` with `audit.jsonl_path` field
 
-**Why second:** Read-only, deterministic, validates the audit file contract that later phases will write to.
-
-**Validation:** Compare output against known audit fixtures.
+**Validation:** Output compared against known audit fixtures.
 
 ## Phase 3: Shared Infrastructure
 
@@ -123,6 +125,7 @@ The following decisions should be made before or during the indicated phase:
 | .NET target version | 1 ✅ | .NET 8 LTS |
 | Test framework | 1 ✅ | xUnit |
 | YAML library | 1 ✅ | YamlDotNet |
+| Audit reader model | 2 ✅ | Domain models with HoldingPeriodCalculator |
 | JSON serializer | 3 | System.Text.Json or Newtonsoft.Json |
 | State reset behavior | 4 | Preserve real-clock reset or fix to use as_of |
 | Run Range architecture | 7 | In-process loop or subprocess per day |

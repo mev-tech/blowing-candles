@@ -28,7 +28,7 @@ public sealed class RunRangeHandler
 
         var config = _configLoader.Load(configPath);
         var pipeline = CreatePipeline(config);
-        var simulationAuditPath = BuildSimulationAuditPath(config.Audit.JsonlPath);
+        var simulationAuditPath = BuildSimulationAuditPath(ResolveAuditPath(config, configPath));
         var daysProcessed = 0;
 
         for (var currentDate = startDate; currentDate <= endDate; currentDate = currentDate.AddDays(1))
@@ -80,5 +80,16 @@ public sealed class RunRangeHandler
         return string.IsNullOrWhiteSpace(directory)
             ? simulationFileName
             : Path.Combine(directory, simulationFileName);
+    }
+
+    private static string ResolveAuditPath(AppConfig config, string configPath)
+    {
+        if (!string.IsNullOrWhiteSpace(config.Audit.ResolvedJsonlPath))
+        {
+            return config.Audit.ResolvedJsonlPath;
+        }
+
+        var baseDirectory = Path.GetDirectoryName(Path.GetFullPath(configPath)) ?? Directory.GetCurrentDirectory();
+        return Path.GetFullPath(Path.Combine(baseDirectory, "logs/decisions.jsonl"));
     }
 }

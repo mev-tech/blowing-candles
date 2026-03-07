@@ -24,12 +24,13 @@ public sealed class RunAsOfHandler
         var config = _configLoader.Load(configPath);
         var clock = new FixedClock(new DateTimeOffset(asOfDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc)));
         var pipeline = CreatePipeline(config);
+        var liveAuditPath = ResolveAuditPath(config, configPath);
         var signals = pipeline.Run(config.Watchlist, clock);
         var textPath = BuildSimulationOutputPath(config.Output.TextFile, asOfDate, ".txt");
         var jsonPath = BuildSimulationOutputPath(config.Output.JsonFile, asOfDate, ".json");
 
         _outputRenderer.WriteSignals(textPath, jsonPath, signals);
-        new JsonlAuditWriter(BuildSimulationAuditPath(config.Audit.JsonlPath)).Append(signals);
+        new JsonlAuditWriter(BuildSimulationAuditPath(liveAuditPath)).Append(signals);
 
         Console.WriteLine($"Generated {signals.Count} scaffold signals for {asOfDate:yyyy-MM-dd}.");
         Console.WriteLine($"Text output: {textPath}");
@@ -69,5 +70,16 @@ public sealed class RunAsOfHandler
         return string.IsNullOrWhiteSpace(directory)
             ? simulationFileName
             : Path.Combine(directory, simulationFileName);
+    }
+
+    private static string ResolveAuditPath(AppConfig config, string configPath)
+    {
+        if (!string.IsNullOrWhiteSpace(config.Audit.ResolvedJsonlPath))
+        {
+            return config.Audit.ResolvedJsonlPath;
+        }
+
+        var baseDirectory = Path.GetDirectoryName(Path.GetFullPath(configPath)) ?? Directory.GetCurrentDirectory();
+        return Path.GetFullPath(Path.Combine(baseDirectory, "logs/decisions.jsonl"));
     }
 }

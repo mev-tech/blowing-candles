@@ -1,6 +1,7 @@
 using System.Globalization;
 using BlowingCandles.Application;
 using BlowingCandles.Cli.Handlers;
+using BlowingCandles.Domain.Services;
 using BlowingCandles.Infrastructure.Clock;
 using BlowingCandles.Infrastructure.Config;
 
@@ -16,7 +17,7 @@ internal static class Program
         var outputRenderer = new OutputRenderer();
 
         var checkCalendarHandler = new CheckCalendarHandler(configLoader, new SystemClock());
-        var statsPeriodsHandler = new StatsPeriodsHandler();
+        var statsPeriodsHandler = new StatsPeriodsHandler(configLoader, new SystemClock(), new HoldingPeriodCalculator());
         var runRealtimeHandler = new RunRealtimeHandler(configLoader, outputRenderer);
         var runAsOfHandler = new RunAsOfHandler(configLoader, outputRenderer);
         var runRangeHandler = new RunRangeHandler(configLoader, outputRenderer);
@@ -32,7 +33,7 @@ internal static class Program
             return args[0] switch
             {
                 "check-calendar" => checkCalendarHandler.Handle(DefaultConfigPath),
-                "stats-periods" => statsPeriodsHandler.Handle(),
+                "stats-periods" => statsPeriodsHandler.Handle(DefaultConfigPath),
                 "run-realtime" => runRealtimeHandler.Handle(DefaultConfigPath),
                 "run-asof" when args.Length == 2 && TryParseDate(args[1], out var asOfDate) =>
                     runAsOfHandler.Handle(DefaultConfigPath, asOfDate),
