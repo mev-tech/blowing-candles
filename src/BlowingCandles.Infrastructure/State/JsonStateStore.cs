@@ -48,7 +48,7 @@ public sealed class JsonStateStore
         File.WriteAllText(_path, JsonSerializer.Serialize(state, JsonOptions) + Environment.NewLine);
     }
 
-    public StateSnapshot ResetIfNewDay(StateSnapshot state, IClock clock)
+    private StateSnapshot ResetIfNewDay(StateSnapshot state, IClock clock)
     {
         var currentDay = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime).ToString("yyyy-MM-dd");
         return state.Day == currentDay

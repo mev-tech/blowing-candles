@@ -39,17 +39,17 @@ This document describes the order in which major system capabilities should be i
 
 **Validation:** Output compared against known audit fixtures.
 
-## Phase 3: Shared Infrastructure
+## Phase 3: Shared Infrastructure ✅
+
+**Status: COMPLETED**
 
 **Capabilities:** Config loading, state persistence, audit writing, output rendering
 
-**What to build:**
-- Consolidated config loader (extending Phase 1 bootstrap)
-- File-backed state store (JSON read/write with day-reset logic)
-- JSONL audit writer with correct enum string formatting
-- Output renderers for signals.txt and signals.json
-
-**Why third:** Every remaining capability depends on config, state, and output infrastructure. Building it here avoids duplication in later phases.
+**What was built:**
+- Consolidated config loader (extending Phase 1 bootstrap) with all `config.yaml` sections
+- File-backed state store (`JsonStateStore`) with JSON read/write and day-reset logic via `IClock`
+- JSONL audit writer (`JsonlAuditWriter`) with correct prefixed enum string formatting
+- Output renderers (`OutputRenderer`) for `signals.txt` (prefixed enums) and `signals.json` (plain enums)
 
 **Validation:** Unit tests for state reset behavior, enum serialization, and output formatting.
 
@@ -126,6 +126,6 @@ The following decisions should be made before or during the indicated phase:
 | Test framework | 1 ✅ | xUnit |
 | YAML library | 1 ✅ | YamlDotNet |
 | Audit reader model | 2 ✅ | Domain models with HoldingPeriodCalculator |
-| JSON serializer | 3 | System.Text.Json or Newtonsoft.Json |
+| JSON serializer | 3 ✅ | System.Text.Json |
 | State reset behavior | 4 | Preserve real-clock reset or fix to use as_of |
 | Run Range architecture | 7 | In-process loop or subprocess per day |

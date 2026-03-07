@@ -13,6 +13,19 @@ The codebase is organized into four projects following a simplified layered arch
 - **Application** — pipeline orchestration, output rendering
 - **CLI** — entry point, command parsing, dependency wiring
 
+```mermaid
+flowchart TD
+    CLI["CLI\nProgram.cs, Handlers"]
+    APP["Application\nSignalPipeline, OutputRenderer"]
+    INFRA["Infrastructure\nYamlConfigLoader, JsonStateStore,\nJsonlAuditWriter, EarningsCalendarFile,\nYahooFinanceAdapter"]
+    DOMAIN["Domain\nEarningsGate, TechnicalScorer,\nTradeGovernor, Models, Interfaces"]
+
+    CLI --> APP
+    CLI --> INFRA
+    APP --> DOMAIN
+    INFRA -.->|implements| DOMAIN
+```
+
 ## Architectural Goals
 
 1. **Behavioral parity.** Every signal-producing code path must match the Python implementation's output for identical inputs. The SMA-based RSI calculation, scoring thresholds, gating priority, and policy enforcement order are non-negotiable.
@@ -88,28 +101,27 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 
 ## Data Flow
 
-```
-config.yaml ──> CLI Handler
-                   |
-                   +--> EarningsGate.Check(watchlist, clock)
-                   |       reads: earnings_calendar.json
-                   |       optional: Yahoo Finance earnings dates
-                   |       => List<NewsSignal>
-                   |
-                   +--> TechnicalScorer.Score(watchlist, clock)
-                   |       reads: Yahoo Finance daily prices
-                   |       => List<MarketSignal>
-                   |
-                   +--> TradeGovernor.Decide(news, market, clock)
-                           reads/writes: state.json
-                           => List<FinalSignal>
-                                  |
-                                  +--> OutputRenderer
-                                  |       writes: signals.txt
-                                  |       writes: signals.json
-                                  |
-                                  +--> AuditWriter
-                                          appends: logs/decisions.jsonl
+```mermaid
+flowchart TD
+    CONFIG["config.yaml"] --> CLI["CLI Handler"]
+    CALENDAR["earnings_calendar.json"] --> EG
+    YAHOO_E["Yahoo Finance\n(earnings fallback)"] -.-> EG
+    YAHOO_P["Yahoo Finance\n(daily prices)"] --> TS
+
+    CLI --> EG["EarningsGate.Check\n(watchlist, clock)"]
+    CLI --> TS["TechnicalScorer.Score\n(watchlist, clock)"]
+
+    EG -->|"List&lt;NewsSignal&gt;"| TG["TradeGovernor.Decide\n(news, market, clock)"]
+    TS -->|"List&lt;MarketSignal&gt;"| TG
+
+    STATE["state.json"] <--> TG
+
+    TG -->|"List&lt;FinalSignal&gt;"| OR["OutputRenderer"]
+    TG -->|"List&lt;FinalSignal&gt;"| AW["AuditWriter"]
+
+    OR --> TXT["signals.txt"]
+    OR --> JSON["signals.json"]
+    AW --> JSONL["logs/decisions.jsonl"]
 ```
 
 ## Configuration and State Management

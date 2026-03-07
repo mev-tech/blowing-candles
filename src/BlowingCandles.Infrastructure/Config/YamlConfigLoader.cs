@@ -23,23 +23,31 @@ public sealed class YamlConfigLoader
         }
 
         using var reader = File.OpenText(path);
-        var rawConfig = _deserializer.Deserialize<AppConfig>(reader)
+        var rawConfig = _deserializer.Deserialize<RawAppConfig>(reader)
             ?? throw new InvalidDataException($"Unable to deserialize config file '{path}'.");
 
         return Normalize(rawConfig, path);
     }
 
-    private static AppConfig Normalize(AppConfig config, string path)
+    private static AppConfig Normalize(RawAppConfig config, string path)
     {
+        if (config.Watchlist is null)
+        {
+            throw new InvalidDataException("Config file is missing required 'watchlist'.");
+        }
+
         var baseDirectory = Path.GetDirectoryName(Path.GetFullPath(path)) ?? Directory.GetCurrentDirectory();
         var localEarningsCalendar = NormalizeOptionalString(config.News?.LocalEarningsCalendar);
+        var outputTextFile = NormalizeOptionalString(config.Output?.TextFile) ?? "signals.txt";
+        var outputJsonFile = NormalizeOptionalString(config.Output?.JsonFile) ?? "signals.json";
+        var statePath = NormalizeOptionalString(config.State?.Path) ?? "data/state.json";
         var auditJsonlPath = NormalizeOptionalString(config.Audit?.JsonlPath);
 
-        return config with
+        return new AppConfig
         {
-            Watchlist = (config.Watchlist ?? [])
-                .Select(ticker => ticker.Trim().ToUpperInvariant())
+            Watchlist = config.Watchlist
                 .Where(ticker => !string.IsNullOrWhiteSpace(ticker))
+                .Select(ticker => ticker.Trim().ToUpperInvariant())
                 .ToArray(),
             News = (config.News ?? new NewsConfig()) with
             {
@@ -50,12 +58,12 @@ public sealed class YamlConfigLoader
             },
             Output = (config.Output ?? new OutputConfig()) with
             {
-                TextFile = ResolvePath(baseDirectory, config.Output?.TextFile ?? "signals.txt"),
-                JsonFile = ResolvePath(baseDirectory, config.Output?.JsonFile ?? "signals.json")
+                TextFile = ResolvePath(baseDirectory, outputTextFile),
+                JsonFile = ResolvePath(baseDirectory, outputJsonFile)
             },
             State = (config.State ?? new StateConfig()) with
             {
-                Path = ResolvePath(baseDirectory, config.State?.Path ?? "data/state.json")
+                Path = ResolvePath(baseDirectory, statePath)
             },
             Audit = (config.Audit ?? new AuditConfig()) with
             {
@@ -80,5 +88,20 @@ public sealed class YamlConfigLoader
         return Path.IsPathRooted(value)
             ? value
             : Path.GetFullPath(Path.Combine(baseDirectory, value));
+    }
+
+    private sealed record RawAppConfig
+    {
+        public string[]? Watchlist { get; init; }
+
+        public NewsConfig? News { get; init; }
+
+        public PolicyConfig? Policy { get; init; }
+
+        public OutputConfig? Output { get; init; }
+
+        public StateConfig? State { get; init; }
+
+        public AuditConfig? Audit { get; init; }
     }
 }

@@ -32,7 +32,7 @@ public sealed class JsonlAuditWriter
                 news_state = $"NewsState.{signal.NewsState}",
                 market_action = $"Action.{signal.MarketAction}",
                 reason = signal.Reason,
-                timestamp = signal.Timestamp.ToString("O")
+                timestamp = signal.Timestamp.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:sszzz")
             };
 
             writer.WriteLine(JsonSerializer.Serialize(payload));

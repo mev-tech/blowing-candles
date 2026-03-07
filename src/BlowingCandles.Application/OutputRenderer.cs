@@ -36,7 +36,7 @@ public sealed class OutputRenderer
             newsState = signal.NewsState.ToString(),
             marketAction = signal.MarketAction.ToString(),
             reason = signal.Reason,
-            timestamp = signal.Timestamp.ToString("O")
+            timestamp = signal.Timestamp.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:sszzz")
         });
 
         File.WriteAllText(path, JsonSerializer.Serialize(payload, JsonOptions) + Environment.NewLine);

@@ -88,3 +88,7 @@ _ReSharper*/
 # Generated files
 
 Generated/
+
+*.out
+*.binlog
+*.log,verbosity
