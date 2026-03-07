@@ -40,7 +40,9 @@ public sealed class RunAsOfHandler
     private static SignalPipeline CreatePipeline(AppConfig config)
     {
         var marketDataProvider = new YahooFinanceAdapter();
-        var earningsGate = new EarningsGate(new EarningsCalendarFile(config.News.LocalEarningsCalendar), marketDataProvider);
+        var earningsGate = new EarningsGate(
+            new EarningsCalendarFile(config.News.ResolvedLocalEarningsCalendar ?? config.News.LocalEarningsCalendar ?? "earnings_calendar.json"),
+            marketDataProvider);
         var technicalScorer = new TechnicalScorer(marketDataProvider);
         var tradeGovernor = new TradeGovernor();
         return new SignalPipeline(earningsGate, technicalScorer, tradeGovernor);

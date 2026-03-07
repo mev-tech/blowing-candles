@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using BlowingCandles.Domain.Interfaces;
 
@@ -6,6 +7,7 @@ namespace BlowingCandles.Infrastructure.Calendar;
 public sealed class EarningsCalendarFile : IEarningsCalendar
 {
     private readonly string _path;
+    private IReadOnlyDictionary<string, IReadOnlyList<DateTimeOffset>>? _calendar;
 
     public EarningsCalendarFile(string path)
     {
@@ -14,26 +16,63 @@ public sealed class EarningsCalendarFile : IEarningsCalendar
 
     public IReadOnlyDictionary<string, IReadOnlyList<DateTimeOffset>> Load()
     {
+        return _calendar ??= LoadCore();
+    }
+
+    public DateTimeOffset? GetNextFutureEarningsDate(string ticker, DateTimeOffset referenceTimeUtc)
+    {
+        if (!Load().TryGetValue(NormalizeTicker(ticker), out var dates))
+        {
+            return null;
+        }
+
+        foreach (var date in dates)
+        {
+            if (date > referenceTimeUtc)
+            {
+                return date;
+            }
+        }
+
+        return null;
+    }
+
+    private IReadOnlyDictionary<string, IReadOnlyList<DateTimeOffset>> LoadCore()
+    {
         if (!File.Exists(_path))
         {
-            return new Dictionary<string, IReadOnlyList<DateTimeOffset>>(StringComparer.OrdinalIgnoreCase);
+            return new Dictionary<string, IReadOnlyList<DateTimeOffset>>(StringComparer.Ordinal);
         }
 
-        using var stream = File.OpenRead(_path);
-        using var document = JsonDocument.Parse(stream);
-        var results = new Dictionary<string, IReadOnlyList<DateTimeOffset>>(StringComparer.OrdinalIgnoreCase);
-
-        if (document.RootElement.ValueKind != JsonValueKind.Object)
+        try
         {
-            return results;
+            using var stream = File.OpenRead(_path);
+            using var document = JsonDocument.Parse(stream);
+            return ParseCalendar(document.RootElement);
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException($"Calendar file '{_path}' contains invalid JSON.", exception);
+        }
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<DateTimeOffset>> ParseCalendar(JsonElement rootElement)
+    {
+        if (rootElement.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidDataException("Calendar JSON root must be an object.");
         }
 
-        foreach (var property in document.RootElement.EnumerateObject())
+        var results = new Dictionary<string, IReadOnlyList<DateTimeOffset>>(StringComparer.Ordinal);
+
+        foreach (var property in rootElement.EnumerateObject())
         {
             var dates = ParseDates(property.Value);
-            if (dates.Count > 0)
+            var ticker = NormalizeTicker(property.Name);
+
+            if (ticker.Length > 0 && dates.Count > 0)
             {
-                results[property.Name.Trim().ToUpperInvariant()] = dates;
+                results[ticker] = dates;
             }
         }
 
@@ -72,7 +111,11 @@ public sealed class EarningsCalendarFile : IEarningsCalendar
 
     private static bool TryParseUtc(string? value, out DateTimeOffset date)
     {
-        if (DateTimeOffset.TryParse(value, out date))
+        if (DateTimeOffset.TryParse(
+            value?.Replace("Z", "+00:00", StringComparison.Ordinal),
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+            out date))
         {
             date = date.ToUniversalTime();
             return true;
@@ -80,5 +123,10 @@ public sealed class EarningsCalendarFile : IEarningsCalendar
 
         date = default;
         return false;
+    }
+
+    private static string NormalizeTicker(string ticker)
+    {
+        return ticker.Trim().ToUpperInvariant();
     }
 }

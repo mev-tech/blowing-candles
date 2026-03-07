@@ -1,3 +1,4 @@
+using System.Globalization;
 using BlowingCandles.Domain.Interfaces;
 using BlowingCandles.Infrastructure.Calendar;
 using BlowingCandles.Infrastructure.Config;
@@ -18,37 +19,53 @@ public sealed class CheckCalendarHandler
     public int Handle(string configPath)
     {
         var config = _configLoader.Load(configPath);
-        var calendar = new EarningsCalendarFile(config.News.LocalEarningsCalendar).Load();
         var now = _clock.UtcNow;
+        var configuredCalendarPath = config.News.LocalEarningsCalendar;
+        var resolvedCalendarPath = config.News.ResolvedLocalEarningsCalendar;
+
+        if (string.IsNullOrWhiteSpace(configuredCalendarPath) || string.IsNullOrWhiteSpace(resolvedCalendarPath))
+        {
+            Console.WriteLine("ERROR: config.yaml -> news.local_earnings_calendar missing");
+            return 1;
+        }
+
+        var calendar = new EarningsCalendarFile(resolvedCalendarPath);
 
         var ok = new List<(string Ticker, DateTimeOffset NextDate)>();
         var expired = new List<string>();
         var missing = new List<string>();
 
-        foreach (var ticker in config.Watchlist.OrderBy(ticker => ticker, StringComparer.Ordinal))
+        try
         {
-            if (!calendar.TryGetValue(ticker, out var dates))
+            var knownTickers = calendar.Load();
+
+            foreach (var ticker in config.Watchlist)
             {
-                missing.Add(ticker);
-                continue;
+                if (!knownTickers.ContainsKey(ticker))
+                {
+                    missing.Add(ticker);
+                    continue;
+                }
+
+                var nextDate = calendar.GetNextFutureEarningsDate(ticker, now);
+
+                if (nextDate is null)
+                {
+                    expired.Add(ticker);
+                    continue;
+                }
+
+                ok.Add((ticker, nextDate.Value));
             }
-
-            var nextDate = dates
-                .Where(date => date > now)
-                .Select(date => (DateTimeOffset?)date)
-                .FirstOrDefault();
-
-            if (nextDate is null)
-            {
-                expired.Add(ticker);
-                continue;
-            }
-
-            ok.Add((ticker, nextDate.Value));
+        }
+        catch (InvalidDataException)
+        {
+            Console.WriteLine($"ERROR: invalid earnings calendar file: {configuredCalendarPath}");
+            return 1;
         }
 
-        Console.WriteLine($"Now (UTC): {now:O}");
-        Console.WriteLine($"Calendar file: {config.News.LocalEarningsCalendar}");
+        Console.WriteLine($"Now (UTC): {FormatUtc(now)}");
+        Console.WriteLine($"Calendar file: {configuredCalendarPath}");
         Console.WriteLine();
 
         if (ok.Count > 0)
@@ -56,7 +73,7 @@ public sealed class CheckCalendarHandler
             Console.WriteLine("OK (next earnings found):");
             foreach (var entry in ok)
             {
-                Console.WriteLine($"  {entry.Ticker}: {entry.NextDate:O}");
+                Console.WriteLine($"  {entry.Ticker}: {FormatUtc(entry.NextDate)}");
             }
 
             Console.WriteLine();
@@ -85,5 +102,16 @@ public sealed class CheckCalendarHandler
         }
 
         return expired.Count == 0 && missing.Count == 0 ? 0 : 2;
+    }
+
+    private static string FormatUtc(DateTimeOffset value)
+    {
+        var utc = value.ToUniversalTime();
+        var wholeSeconds = utc.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture);
+        var microseconds = (utc.Ticks % TimeSpan.TicksPerSecond) / 10;
+
+        return microseconds == 0
+            ? $"{wholeSeconds}Z"
+            : $"{wholeSeconds}.{microseconds:000000}Z";
     }
 }

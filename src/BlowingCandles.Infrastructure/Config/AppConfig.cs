@@ -17,7 +17,9 @@ public sealed record AppConfig
 
 public sealed record NewsConfig
 {
-    public string LocalEarningsCalendar { get; init; } = "earnings_calendar.json";
+    public string? LocalEarningsCalendar { get; init; }
+
+    public string? ResolvedLocalEarningsCalendar { get; init; }
 
     public int BlockWindowHours { get; init; } = 48;
 }

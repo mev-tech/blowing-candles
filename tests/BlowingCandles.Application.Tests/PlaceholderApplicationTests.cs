@@ -37,6 +37,13 @@ public sealed class PlaceholderApplicationTests
         {
             return new Dictionary<string, IReadOnlyList<DateTimeOffset>>(StringComparer.OrdinalIgnoreCase);
         }
+
+        public DateTimeOffset? GetNextFutureEarningsDate(string ticker, DateTimeOffset referenceTimeUtc)
+        {
+            _ = ticker;
+            _ = referenceTimeUtc;
+            return null;
+        }
     }
 
     private sealed class StubMarketDataProvider : IMarketDataProvider

@@ -32,17 +32,20 @@ public sealed class YamlConfigLoader
     private static AppConfig Normalize(AppConfig config, string path)
     {
         var baseDirectory = Path.GetDirectoryName(Path.GetFullPath(path)) ?? Directory.GetCurrentDirectory();
+        var localEarningsCalendar = NormalizeOptionalString(config.News?.LocalEarningsCalendar);
 
         return config with
         {
-            Watchlist = config.Watchlist
+            Watchlist = (config.Watchlist ?? [])
                 .Select(ticker => ticker.Trim().ToUpperInvariant())
                 .Where(ticker => !string.IsNullOrWhiteSpace(ticker))
-                .Distinct(StringComparer.Ordinal)
                 .ToArray(),
             News = (config.News ?? new NewsConfig()) with
             {
-                LocalEarningsCalendar = ResolvePath(baseDirectory, config.News?.LocalEarningsCalendar ?? "earnings_calendar.json")
+                LocalEarningsCalendar = localEarningsCalendar,
+                ResolvedLocalEarningsCalendar = localEarningsCalendar is null
+                    ? null
+                    : ResolvePath(baseDirectory, localEarningsCalendar)
             },
             Output = (config.Output ?? new OutputConfig()) with
             {
@@ -59,6 +62,13 @@ public sealed class YamlConfigLoader
             },
             Policy = config.Policy ?? new PolicyConfig()
         };
+    }
+
+    private static string? NormalizeOptionalString(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim();
     }
 
     private static string ResolvePath(string baseDirectory, string value)
