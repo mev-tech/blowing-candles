@@ -67,24 +67,6 @@ public sealed class JsonStateStoreTests : IDisposable
     }
 
     [Fact]
-    public void RecordBuy_IncrementsBuysAndSetsLastBuyAt()
-    {
-        var buyTime = new DateTimeOffset(2026, 3, 7, 14, 30, 0, TimeSpan.Zero);
-        var initial = new JsonStateStore.StateSnapshot
-        {
-            Day = "2026-03-07",
-            BuysToday = 1,
-            LastBuyAt = null
-        };
-        var store = new JsonStateStore(_workspace.GetPath("state.json"));
-
-        var updated = store.RecordBuy(initial, buyTime);
-
-        Assert.Equal(2, updated.BuysToday);
-        Assert.Equal(buyTime, updated.LastBuyAt);
-    }
-
-    [Fact]
     public void SaveAndReload_RoundTripsCorrectly()
     {
         var clock = new FixedClock(new DateTimeOffset(2026, 3, 7, 12, 0, 0, TimeSpan.Zero));

@@ -5,6 +5,7 @@ using BlowingCandles.Infrastructure.Calendar;
 using BlowingCandles.Infrastructure.Clock;
 using BlowingCandles.Infrastructure.Config;
 using BlowingCandles.Infrastructure.MarketData;
+using BlowingCandles.Infrastructure.State;
 
 namespace BlowingCandles.Cli.Handlers;
 
@@ -45,7 +46,10 @@ public sealed class RunAsOfHandler
             new EarningsCalendarFile(config.News.ResolvedLocalEarningsCalendar ?? config.News.LocalEarningsCalendar ?? "earnings_calendar.json"),
             marketDataProvider);
         var technicalScorer = new TechnicalScorer(marketDataProvider);
-        var tradeGovernor = new TradeGovernor();
+        var tradeGovernor = new TradeGovernor(
+            config.Policy.MaxBuysPerDay,
+            config.Policy.CooldownMinutes,
+            new JsonStateStore(BuildSimulationStatePath(config.State.Path)));
         return new SignalPipeline(earningsGate, technicalScorer, tradeGovernor);
     }
 
@@ -53,6 +57,19 @@ public sealed class RunAsOfHandler
     {
         var directory = Path.GetDirectoryName(liveAuditPath);
         var fileName = Path.GetFileName(liveAuditPath);
+        var simulationFileName = fileName.StartsWith("sim_", StringComparison.OrdinalIgnoreCase)
+            ? fileName
+            : $"sim_{fileName}";
+
+        return string.IsNullOrWhiteSpace(directory)
+            ? simulationFileName
+            : Path.Combine(directory, simulationFileName);
+    }
+
+    private static string BuildSimulationStatePath(string liveStatePath)
+    {
+        var directory = Path.GetDirectoryName(liveStatePath);
+        var fileName = Path.GetFileName(liveStatePath);
         var simulationFileName = fileName.StartsWith("sim_", StringComparison.OrdinalIgnoreCase)
             ? fileName
             : $"sim_{fileName}";

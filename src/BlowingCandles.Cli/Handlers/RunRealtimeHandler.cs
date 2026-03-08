@@ -5,6 +5,7 @@ using BlowingCandles.Infrastructure.Calendar;
 using BlowingCandles.Infrastructure.Clock;
 using BlowingCandles.Infrastructure.Config;
 using BlowingCandles.Infrastructure.MarketData;
+using BlowingCandles.Infrastructure.State;
 
 namespace BlowingCandles.Cli.Handlers;
 
@@ -43,7 +44,10 @@ public sealed class RunRealtimeHandler
             new EarningsCalendarFile(config.News.ResolvedLocalEarningsCalendar ?? config.News.LocalEarningsCalendar ?? "earnings_calendar.json"),
             marketDataProvider);
         var technicalScorer = new TechnicalScorer(marketDataProvider);
-        var tradeGovernor = new TradeGovernor();
+        var tradeGovernor = new TradeGovernor(
+            config.Policy.MaxBuysPerDay,
+            config.Policy.CooldownMinutes,
+            new JsonStateStore(config.State.Path));
         return new SignalPipeline(earningsGate, technicalScorer, tradeGovernor);
     }
 

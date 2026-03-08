@@ -1,10 +1,11 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using BlowingCandles.Domain.Interfaces;
+using BlowingCandles.Domain.Models;
 
 namespace BlowingCandles.Infrastructure.State;
 
-public sealed class JsonStateStore
+public sealed class JsonStateStore : ITradeGovernorStateStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -56,16 +57,6 @@ public sealed class JsonStateStore
             : Empty(clock);
     }
 
-    public StateSnapshot RecordBuy(StateSnapshot state, DateTimeOffset whenUtc)
-    {
-        return state with
-        {
-            Day = DateOnly.FromDateTime(whenUtc.UtcDateTime).ToString("yyyy-MM-dd"),
-            BuysToday = state.BuysToday + 1,
-            LastBuyAt = whenUtc.ToUniversalTime()
-        };
-    }
-
     private static StateSnapshot Empty(IClock clock)
     {
         return new StateSnapshot
@@ -74,6 +65,22 @@ public sealed class JsonStateStore
             BuysToday = 0,
             LastBuyAt = null
         };
+    }
+
+    TradeGovernorState ITradeGovernorStateStore.Load(IClock clock)
+    {
+        var state = Load(clock);
+        return new TradeGovernorState(state.Day, state.BuysToday, state.LastBuyAt);
+    }
+
+    void ITradeGovernorStateStore.Save(TradeGovernorState state)
+    {
+        Save(new StateSnapshot
+        {
+            Day = state.Day,
+            BuysToday = state.BuysToday,
+            LastBuyAt = state.LastBuyAt
+        });
     }
 
     public sealed record StateSnapshot

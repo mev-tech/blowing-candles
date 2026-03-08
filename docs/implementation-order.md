@@ -53,15 +53,18 @@ This document describes the order in which major system capabilities should be i
 
 **Validation:** Unit tests for state reset behavior, enum serialization, and output formatting.
 
-## Phase 4: Trade Governor
+## Phase 4: Trade Governor ✅
+
+**Status: COMPLETED**
 
 **Capabilities:** Signal merging, policy enforcement
 
-**What to build:**
+**What was built:**
 - Trade Governor domain logic (news gating, market action pass-through, buy limits, cooldown)
-- State integration for buy tracking
-
-**Why fourth:** Pure domain logic that can be tested with constructed inputs. Does not require Yahoo Finance or real market data.
+- `ITradeGovernorStateStore` interface for state abstraction
+- `TradeGovernorState` model for governor-specific state
+- State integration for buy tracking via `JsonStateStore` implementing `ITradeGovernorStateStore`
+- CLI handler updates (`RunAsOfHandler`, `RunRealtimeHandler`, `RunRangeHandler`) to wire the Trade Governor
 
 **Validation:** Focused tests for each gate (missing news, stale news, NO_TRADE, WAIT, TRADE_OK pass-through) and policy constraint (max buys, cooldown).
 
@@ -127,5 +130,5 @@ The following decisions should be made before or during the indicated phase:
 | YAML library | 1 ✅ | YamlDotNet |
 | Audit reader model | 2 ✅ | Domain models with HoldingPeriodCalculator |
 | JSON serializer | 3 ✅ | System.Text.Json |
-| State reset behavior | 4 | Preserve real-clock reset or fix to use as_of |
+| State reset behavior | 4 ✅ | Uses `IClock` for day-reset; simulation uses `as_of` (accepted divergence from Python) |
 | Run Range architecture | 7 | In-process loop or subprocess per day |

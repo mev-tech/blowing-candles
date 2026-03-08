@@ -73,6 +73,7 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 - `IEarningsCalendar` — load and query earnings dates from the local calendar.
 - `IMarketDataProvider` — retrieve daily OHLCV price history for a ticker.
 - `IClock` — provides current UTC time; injectable for deterministic testing and as-of simulation.
+- `ITradeGovernorStateStore` — load and save trade governor state (buy count, last buy timestamp). Implemented by `JsonStateStore`.
 
 **Domain Services**
 
@@ -83,7 +84,7 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 ### Infrastructure Layer
 
 - `YamlConfigLoader` — parses `config.yaml` into a strongly-typed `AppConfig` object.
-- `JsonStateStore` — reads/writes `state.json` (fields: `day`, `buys_today`, `last_buy_at`). Auto-resets on day change. Silently resets on corruption or missing file.
+- `JsonStateStore` — reads/writes `state.json` (fields: `day`, `buys_today`, `last_buy_at`). Auto-resets on day change. Silently resets on corruption or missing file. Implements `ITradeGovernorStateStore`.
 - `JsonlAuditWriter` — appends JSONL rows to the audit log. Append-only, never truncates.
 - `JsonlAuditReader` — reads and parses JSONL audit files for stats-periods analysis.
 - `EarningsCalendarFile` — implements `IEarningsCalendar` by loading `earnings_calendar.json`.
@@ -245,11 +246,13 @@ BlowingCandles/
 │   │   │   ├── AuditRecord.cs
 │   │   │   ├── HoldingPeriod.cs
 │   │   │   ├── HoldingPeriodAnalysis.cs
-│   │   │   └── OpenPosition.cs
+│   │   │   ├── OpenPosition.cs
+│   │   │   └── TradeGovernorState.cs
 │   │   ├── Interfaces/
 │   │   │   ├── IClock.cs
 │   │   │   ├── IEarningsCalendar.cs
-│   │   │   └── IMarketDataProvider.cs
+│   │   │   ├── IMarketDataProvider.cs
+│   │   │   └── ITradeGovernorStateStore.cs
 │   │   └── Services/
 │   │       ├── EarningsGate.cs
 │   │       ├── TechnicalScorer.cs
