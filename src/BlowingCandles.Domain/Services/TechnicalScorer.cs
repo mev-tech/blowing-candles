@@ -31,10 +31,12 @@ public sealed class TechnicalScorer
     private const string RsiNeutralReason = "RSI_NEUTRAL";
 
     private readonly IMarketDataProvider _marketDataProvider;
+    private readonly Action<string>? _diagnosticWriter;
 
-    public TechnicalScorer(IMarketDataProvider marketDataProvider)
+    public TechnicalScorer(IMarketDataProvider marketDataProvider, Action<string>? diagnosticWriter = null)
     {
         _marketDataProvider = marketDataProvider;
+        _diagnosticWriter = diagnosticWriter;
     }
 
     public IReadOnlyList<MarketSignal> Score(IEnumerable<string> watchlist, IClock clock)
@@ -61,6 +63,8 @@ public sealed class TechnicalScorer
             var priceHistory = _marketDataProvider.GetDailyPriceHistory(ticker, asOfDate);
             if (priceHistory is null || priceHistory.Count == 0)
             {
+                _diagnosticWriter?.Invoke(
+                    $"[TechnicalScorer] {ticker} returned no price history for {asOfDate:yyyy-MM-dd}.");
                 return CreateSignal(ticker, TradingAction.WAIT, 0, 0m, 0m, 0m, 0m, MarketDataErrorReason, timestamp);
             }
 
@@ -119,8 +123,10 @@ public sealed class TechnicalScorer
 
             return CreateSignal(ticker, action, score, close, sma50, sma200, rsi14, string.Join(",", reasonCodes), timestamp);
         }
-        catch
+        catch (Exception exception)
         {
+            _diagnosticWriter?.Invoke(
+                $"[TechnicalScorer] {ticker} market data failed for {asOfDate:yyyy-MM-dd}: {exception.GetType().Name}: {exception.Message}");
             return CreateSignal(ticker, TradingAction.WAIT, 0, 0m, 0m, 0m, 0m, MarketDataErrorReason, timestamp);
         }
     }

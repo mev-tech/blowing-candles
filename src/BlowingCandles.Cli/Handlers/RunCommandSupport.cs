@@ -14,15 +14,18 @@ public sealed class RunCommandSupport
     private readonly Func<AppConfig, IEarningsCalendar> _earningsCalendarFactory;
     private readonly Func<AppConfig, IMarketDataProvider> _marketDataProviderFactory;
     private readonly Func<AppConfig, string, IClock, IReadOnlyList<FinalSignal>> _signalRunner;
+    private readonly Action<string>? _diagnosticWriter;
 
     public RunCommandSupport(
         Func<AppConfig, IEarningsCalendar>? earningsCalendarFactory = null,
         Func<AppConfig, IMarketDataProvider>? marketDataProviderFactory = null,
-        Func<AppConfig, string, IClock, IReadOnlyList<FinalSignal>>? signalRunner = null)
+        Func<AppConfig, string, IClock, IReadOnlyList<FinalSignal>>? signalRunner = null,
+        Action<string>? diagnosticWriter = null)
     {
         _earningsCalendarFactory = earningsCalendarFactory ?? CreateEarningsCalendar;
         _marketDataProviderFactory = marketDataProviderFactory ?? CreateMarketDataProvider;
         _signalRunner = signalRunner ?? RunSignalsCore;
+        _diagnosticWriter = diagnosticWriter ?? WriteDiagnostic;
     }
 
     public IReadOnlyList<FinalSignal> RunSignals(AppConfig config, string statePath, IClock clock)
@@ -74,8 +77,9 @@ public sealed class RunCommandSupport
         var earningsGate = new EarningsGate(
             _earningsCalendarFactory(config),
             marketDataProvider,
-            config.News.BlockWindowHours);
-        var technicalScorer = new TechnicalScorer(marketDataProvider);
+            config.News.BlockWindowHours,
+            _diagnosticWriter);
+        var technicalScorer = new TechnicalScorer(marketDataProvider, _diagnosticWriter);
         var tradeGovernor = new TradeGovernor(
             config.Policy.MaxBuysPerDay,
             config.Policy.CooldownMinutes,
@@ -109,5 +113,10 @@ public sealed class RunCommandSupport
         return string.IsNullOrWhiteSpace(directory)
             ? simulationFileName
             : Path.Combine(directory, simulationFileName);
+    }
+
+    private static void WriteDiagnostic(string message)
+    {
+        Console.Error.WriteLine(message);
     }
 }

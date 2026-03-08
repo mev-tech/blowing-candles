@@ -1,6 +1,6 @@
 # Low-Level Design
 
-> Living document. Updated as each implementation phase lands. Current state reflects through **Phase 3 (Shared Infrastructure)**.
+> Living document. Updated as each implementation phase lands. Current state reflects through **Phase 8 (Finalization)**. **Phase 9 (Yahoo Finance Adapter)** is deferred until after Phase 10/11 — offline seams and tests are complete; live transport verification requires the refresh worker.
 
 ## Class Catalog
 
@@ -116,7 +116,7 @@ Constructor(IEarningsCalendar earningsCalendar, IMarketDataProvider marketDataPr
 |--------|-----------|-------------|
 | `Check` | `IReadOnlyList<NewsSignal> Check(IEnumerable<string> watchlist, IClock clock)` | Checks earnings proximity for each ticker. Local calendar first, Yahoo Finance fallback if ticker absent. Returns WAIT on any error. |
 
-Status: **Scaffold** — currently returns WAIT/"NOT_IMPLEMENTED" for all tickers.
+Status: **Implemented**.
 
 **`TechnicalScorer`**
 
@@ -128,7 +128,7 @@ Constructor(IMarketDataProvider marketDataProvider)
 |--------|-----------|-------------|
 | `Score` | `IReadOnlyList<MarketSignal> Score(IEnumerable<string> watchlist, IClock clock)` | Downloads 1 year of daily prices, computes SMA50, SMA200, RSI14 (all SMA-based), scores and emits a MarketSignal per ticker. Returns WAIT on any error. |
 
-Status: **Scaffold** — currently returns WAIT/zero indicators for all tickers.
+Status: **Implemented**.
 
 **`TradeGovernor`**
 
@@ -140,7 +140,7 @@ Constructor()  // no dependencies
 |--------|-----------|-------------|
 | `Decide` | `IReadOnlyList<FinalSignal> Decide(IEnumerable<NewsSignal>, IEnumerable<MarketSignal>, IClock)` | Merges news + market signals. Applies gating priority, max-buys-per-day, cooldown. Processes tickers alphabetically. |
 
-Status: **Scaffold** — currently merges signals and returns WAIT/"NOT_IMPLEMENTED".
+Status: **Implemented**.
 
 **`HoldingPeriodCalculator`**
 
@@ -284,15 +284,15 @@ Status: **Implemented**.
 **`YahooFinanceAdapter : IMarketDataProvider`**
 
 ```
-Constructor()  // no dependencies
+Constructor()  // public adapter entry point; may compose internal Yahoo transport or parsing helpers
 ```
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `GetDailyPriceHistory` | `IReadOnlyList<PriceBar> GetDailyPriceHistory(string ticker, DateOnly asOfDate)` | Returns empty array (stub). |
-| `GetNextEarningsDate` | `DateTimeOffset? GetNextEarningsDate(string ticker, DateTimeOffset asOfUtc)` | Returns null (stub). |
+| `GetDailyPriceHistory` | `IReadOnlyList<PriceBar> GetDailyPriceHistory(string ticker, DateOnly asOfDate)` | Fetches about 365 days of daily OHLCV via a verified Yahoo integration path, clamps invalid future boundaries, normalizes timestamps deliberately, and returns `PriceBar[]` ordered by date. |
+| `GetNextEarningsDate` | `DateTimeOffset? GetNextEarningsDate(string ticker, DateTimeOffset asOfUtc)` | Queries Yahoo for the next future earnings date when the local calendar lacks the ticker. Returns null only when Yahoo has no usable date. |
 
-Status: **Stub** — not yet implemented.
+Status: **Deferred** — offline seams and tests are complete; live Yahoo HTTP transport verification is blocked on Phase 10 (refresh worker). Runtime reads will use persisted snapshots.
 
 ---
 
@@ -308,7 +308,7 @@ Constructor(EarningsGate earningsGate, TechnicalScorer technicalScorer, TradeGov
 |--------|-----------|-------------|
 | `Run` | `IReadOnlyList<FinalSignal> Run(IEnumerable<string> watchlist, IClock clock)` | Normalizes watchlist (trim, uppercase, distinct), then executes: EarningsGate.Check -> TechnicalScorer.Score -> TradeGovernor.Decide. |
 
-Status: **Implemented** (orchestration works; domain services are scaffolds).
+Status: **Implemented**.
 
 **`OutputRenderer`**
 
@@ -452,11 +452,13 @@ Program.Main
 | 1 — Scaffold + Calendar Validator | Project structure, config loader, calendar reader, clock, `check-calendar` | Done |
 | 2 — Audit Analysis | JSONL reader, `HoldingPeriodCalculator`, `stats-periods` | Done |
 | 3 — Shared Infrastructure | Full config loader, state store, audit writer, output renderer | Done |
-| 4 — Trade Governor | News gating, market pass-through, buy limits, cooldown | Pending |
-| 5 — Earnings Gate | Proximity checking, Yahoo Finance fallback | Pending |
-| 6 — Technical Scoring | SMA50, SMA200, RSI14 (SMA-based), composite scoring | Pending |
-| 7 — Command Orchestration | Wire full pipeline, `run-asof`, `run-realtime`, `run-range` | Pending |
-| 8 — Finalization | Dockerfile, cross-validation against Python | Pending |
+| 4 — Trade Governor | News gating, market pass-through, buy limits, cooldown | Done |
+| 5 — Earnings Gate | Proximity checking, Yahoo Finance fallback | Done |
+| 6 — Technical Scoring | SMA50, SMA200, RSI14 (SMA-based), composite scoring | Done |
+| 7 — Command Orchestration | Wire full pipeline, `run-asof`, `run-realtime`, `run-range` | Done |
+| 8 — Finalization | Dockerfile, cross-validation against Python | Done |
+| 9 — Yahoo Finance Adapter | Verified live Yahoo transport for the refresh worker | Deferred (blocked on 10/11) |
+| 10 — Market Data Persistence | PostgreSQL refresh runs, immutable snapshots, historical quote rows, missing-symbol tracking, and snapshot freshness metadata | Planned |
 
 ## Design Decisions Log
 
@@ -470,3 +472,6 @@ Program.Main
 | Prefixed enums in audit, plain in JSON output | Matches Python output format for behavioral parity |
 | State uses `IClock` for day-reset | Accepted divergence from Python (which uses wall-clock even in simulation) |
 | Path resolution relative to config file | Allows config to be in any directory without CWD dependency |
+| Yahoo integration strategy deferred | Offline adapter seams are complete; live transport verification blocked on the Phase 10 refresh worker |
+| Fresh snapshot-backed market data is acceptable for runtime | End-of-day signals only require the latest completed daily close; persisted refresh snapshots reduce provider throttling risk |
+| Immutable snapshot persistence is the primary refresh model | Refreshes should write a new snapshot with explicit missing-symbol tracking instead of mutating prior market-data rows in place |

@@ -6,7 +6,7 @@ This document describes the order in which major system capabilities should be i
 
 - Start with capabilities that are deterministic and do not require external network access.
 - Build shared infrastructure (config, state, audit) early so later phases can reuse it.
-- Defer Yahoo Finance integration until the internal logic is solid and testable.
+- Defer Yahoo Finance integration until the internal logic is solid and testable, then validate the live path before marking the phase complete.
 - Each phase should produce a working, testable capability.
 
 ## Phase 1: Project Scaffold and Calendar Validator ✅
@@ -138,6 +138,63 @@ This document describes the order in which major system capabilities should be i
 
 **Validation:** All six golden output tests pass. All existing Domain, Application, and Infrastructure tests pass. Docker build succeeds with test stage gating.
 
+## Phase 9: Yahoo Finance Adapter — Live Transport Verification
+
+**Status: DEFERRED (blocked on Phase 10/11)**
+
+**Capabilities:** Verified live Yahoo transport for the refresh worker
+
+**What landed:**
+- `YahooFinanceAdapter` implements `IMarketDataProvider` with internal seams: `YahooFinanceRequestFactory`, `IYahooFinanceTransport`, `YahooFinanceResponseParser`
+- Typed exception hierarchy (auth, rate-limit, transport, parsing)
+- Boundary clamping, chronological ordering, timestamp normalization
+- `GetNextEarningsDate` parses Yahoo `calendarEvents` (raw/fmt/string/date-only)
+- 12 adapter-focused offline tests covering mapping, ordering, boundary, earnings, and error handling
+- Diagnostic writer plumbed through `EarningsGate` and `TechnicalScorer`
+
+**What remains (after Phase 10/11):**
+- Verify or fix `YahooFinanceHttpTransport` against live Yahoo endpoints
+- If the refresh worker is async, add async transport support
+- Run a network-enabled smoke validation proving the refresh worker persists a valid snapshot
+
+**Why deferred:** The adapter's primary consumer is the refresh worker (Phase 10), not the synchronous CLI pipeline. Runtime signal reads will use persisted snapshots, so fixing the live HTTP path only matters for the worker. Completing this before the worker exists produces no verifiable outcome.
+
+**Validation:** The refresh worker produces a valid snapshot with real Yahoo data, adapter-focused offline tests pass, and the automated suite remains green.
+
+## Phase 10: Market Data Persistence
+
+**Status: NOT STARTED**
+
+**Capabilities:** PostgreSQL-backed market-data snapshots with explicit refresh persistence
+
+**What to build:**
+- A PostgreSQL schema for `market_data_refresh_run`, `market_data_snapshot`, `market_data_snapshot_quote`, and `market_data_snapshot_missing_symbol`
+- EF Core entities and `AppDbContext` configuration for immutable snapshot storage
+- A refresh workflow or worker path that persists one snapshot per refresh run
+- Snapshot freshness metadata and selection rules for live and historical reads
+- Explicit missing-symbol tracking so incomplete refreshes stay fail-safe instead of silently dropping symbols
+
+**Why tenth:** Daily bars are stable enough for end-of-day workflows, and Yahoo throttling makes per-run live retrieval operationally fragile. Introducing durable snapshot persistence is the foundation required before cache-first runtime reads or worker-driven refresh behavior can rely on PostgreSQL safely.
+
+**Validation:** Migrations apply successfully, refresh runs persist succeeded/partial/failed outcomes, snapshots store complete quote history plus missing-symbol rows, and stale or missing persisted data remains fail-safe.
+
+## Phase 11: REST API Endpoints
+
+**Status: NOT STARTED**
+
+**Capabilities:** RESTful signal retrieval over HTTP
+
+**What to build:**
+- Minimal ASP.NET Core Web API project (`BlowingCandles.Api`) or extend the CLI with `Microsoft.AspNetCore` hosting
+- `GET /api/signals` — Returns the latest generated signals (reads from `signals.json`)
+- `GET /api/signals/{ticker}` — Returns the latest signal for a specific ticker
+- JSON responses using plain enum serialisation (consistent with `signals.json`)
+- No authentication required (local/operator use)
+
+**Why eleventh:** All signal generation and market-data persistence workflows are complete. The API remains a thin read layer over existing pipeline output.
+
+**Validation:** Integration tests verifying correct HTTP status codes, JSON response structure, and ticker filtering.
+
 ## Decision Points
 
 The following decisions should be made before or during the indicated phase:
@@ -151,3 +208,8 @@ The following decisions should be made before or during the indicated phase:
 | JSON serializer | 3 ✅ | System.Text.Json |
 | State reset behavior | 4 ✅ | Uses `IClock` for day-reset; simulation uses `as_of` (accepted divergence from Python) |
 | Run Range architecture | 7 ✅ | In-process loop with shared state (no subprocesses) |
+| Yahoo Finance integration strategy | 9 | Deferred — offline seams are complete; live transport verification blocked on Phase 10 refresh worker |
+| Sync-over-async pattern | 9 | Decided by the refresh worker's pipeline design; synchronous CLI reads shift to snapshots |
+| Yahoo verification gate | 9 | Required — refresh worker must produce a valid snapshot with real Yahoo data before the phase is closed |
+| Snapshot read policy | 10 | Live reads require a fresh snapshot; historical reads select the latest snapshot whose `as_of_date` is not newer than the requested simulation date |
+| Refresh persistence model | 10 | Persist immutable snapshots with explicit missing-symbol tracking; do not mutate prior snapshot rows in place |

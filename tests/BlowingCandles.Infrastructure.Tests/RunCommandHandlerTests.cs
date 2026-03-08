@@ -155,6 +155,40 @@ public sealed class RunCommandHandlerTests
     }
 
     [Fact]
+    public void RunRealtime_MarketDataFailure_WritesDiagnosticToStandardError()
+    {
+        using var workspace = new TestWorkspace();
+        WriteRunConfig(workspace, watchlist: "[AAPL]", maxBuysPerDay: 5);
+
+        var now = new DateTimeOffset(2026, 3, 8, 12, 0, 0, TimeSpan.Zero);
+        var provider = new ThrowingMarketDataProvider(
+            new InvalidOperationException("Yahoo historical prices request was rate-limited with 429 Too Many Requests."));
+        var calendar = new FakeCalendar(new Dictionary<string, DateTimeOffset?>(StringComparer.Ordinal)
+        {
+            ["AAPL"] = now.AddDays(7)
+        });
+        var support = new RunCommandSupport(_ => calendar, _ => provider);
+        var handler = new RunRealtimeHandler(
+            new YamlConfigLoader(),
+            new OutputRenderer(),
+            support,
+            () => new FixedClock(now));
+
+        var (exitCode, output, errorOutput) = InvokeWithError(() => handler.Handle(workspace.GetPath("config.yaml")));
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(
+            $$"""
+            Generated 1 signals.
+            Text output: {{workspace.GetPath("output/live.signals.txt")}}
+            JSON output: {{workspace.GetPath("output/live.signals.json")}}
+            """ + Environment.NewLine,
+            output);
+        Assert.Contains("[TechnicalScorer] AAPL market data failed for 2026-03-08:", errorOutput, StringComparison.Ordinal);
+        Assert.Contains("429 Too Many Requests", errorOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RunRange_WritesPerDayOutputsAndSharedSimulationAudit()
     {
         using var workspace = new TestWorkspace();
@@ -315,6 +349,29 @@ public sealed class RunCommandHandlerTests
         }
     }
 
+    private static (int ExitCode, string Output, string ErrorOutput) InvokeWithError(Func<int> action)
+    {
+        var originalOut = Console.Out;
+        var originalError = Console.Error;
+        using var outputWriter = new StringWriter();
+        using var errorWriter = new StringWriter();
+
+        try
+        {
+            Console.SetOut(outputWriter);
+            Console.SetError(errorWriter);
+            var exitCode = action();
+            outputWriter.Flush();
+            errorWriter.Flush();
+            return (exitCode, outputWriter.ToString(), errorWriter.ToString());
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Console.SetError(originalError);
+        }
+    }
+
     private sealed class FakeCalendar : IEarningsCalendar
     {
         private readonly IReadOnlyDictionary<string, DateTimeOffset?> _datesByTicker;
@@ -357,6 +414,30 @@ public sealed class RunCommandHandlerTests
         {
             PriceRequests.Add(new PriceRequest(ticker, asOfDate));
             return _priceHistoryByTicker[ticker];
+        }
+
+        public DateTimeOffset? GetNextEarningsDate(string ticker, DateTimeOffset asOfUtc)
+        {
+            _ = ticker;
+            _ = asOfUtc;
+            return null;
+        }
+    }
+
+    private sealed class ThrowingMarketDataProvider : IMarketDataProvider
+    {
+        private readonly Exception _exception;
+
+        public ThrowingMarketDataProvider(Exception exception)
+        {
+            _exception = exception;
+        }
+
+        public IReadOnlyList<PriceBar> GetDailyPriceHistory(string ticker, DateOnly asOfDate)
+        {
+            _ = ticker;
+            _ = asOfDate;
+            throw _exception;
         }
 
         public DateTimeOffset? GetNextEarningsDate(string ticker, DateTimeOffset asOfUtc)

@@ -32,7 +32,7 @@ flowchart TD
 
 2. **Fail-safe by default.** Every error condition in every component defaults to WAIT. Never emit BUY or SELL on failure. This is a safety-critical invariant.
 
-3. **Testability without network access.** All external data sources (Yahoo Finance, filesystem) are behind interfaces. Domain logic is pure and testable with constructed inputs.
+3. **Testability without network access.** All external data sources (Yahoo Finance, filesystem) are behind interfaces. Domain logic is pure and testable with constructed inputs, and Yahoo-specific transport or parsing behavior should sit behind small internal seams so the adapter can be validated offline.
 
 4. **Single responsibility per file.** Each class does one thing. No god classes, no duplicated logic between commands.
 
@@ -88,7 +88,7 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 - `JsonlAuditWriter` — appends JSONL rows to the audit log. Append-only, never truncates.
 - `JsonlAuditReader` — reads and parses JSONL audit files for stats-periods analysis.
 - `EarningsCalendarFile` — implements `IEarningsCalendar` by loading `earnings_calendar.json`.
-- `YahooFinanceAdapter` — implements `IMarketDataProvider` using an HTTP client to retrieve daily OHLCV data and earnings dates from Yahoo Finance.
+- `YahooFinanceAdapter` — implements `IMarketDataProvider` via a verified Yahoo integration path. Retrieves up to 365 days of daily OHLCV for technical scoring and next earnings dates for fallback use when the local calendar lacks a ticker. The adapter owns provider-specific request shaping, boundary clamping, timestamp normalization, and exception propagation. The exact Yahoo library or HTTP strategy is an implementation detail until live verification passes.
 
 ### Application Layer
 
@@ -210,12 +210,14 @@ No log files. Console output only. The JSONL audit log serves as the persistent 
 
 ### Yahoo Finance Adapter
 
-Implements `IMarketDataProvider`. Responsibilities:
-- Download one year of daily OHLCV data for a ticker up to a given date.
-- Retrieve earnings dates for a ticker (fallback path).
-- Return raw data; all interpretation happens in domain services.
+Implements `IMarketDataProvider` via a verified Yahoo integration path. Responsibilities:
+- Download approximately 365 days of daily OHLCV data for a ticker up to a given date.
+- Retrieve the next earnings date for fallback use when the local calendar does not contain the ticker.
+- Clamp provider-invalid future end boundaries and handle endpoint-specific inclusive or exclusive date rules explicitly.
+- Map provider responses to `PriceBar[]` ordered chronologically with deliberate timestamp normalization.
+- Keep the adapter boundary synchronous if the final implementation still fits the application's synchronous design.
 
-No retry logic. No caching. Failures propagate as exceptions to be caught by the calling domain service.
+No retry logic. No caching by default. Failures propagate as exceptions to be caught by the calling domain service. Provider-specific transport or parsing helpers may be introduced internally, but `YahooFinanceAdapter` remains the public `IMarketDataProvider` entry point.
 
 ### Earnings Calendar File
 
@@ -355,6 +357,18 @@ Wire the full pipeline and build `run-asof`, `run-realtime`, and `run-range` com
 
 Dockerfile, operational documentation, final cross-validation against Python output.
 
+### Phase 9: Yahoo Finance Adapter — Live Transport Verification
+
+Deferred until after Phase 10 and 11. The adapter's offline seams (request factory, transport interface, response parser) and 12 offline tests are complete. Live Yahoo HTTP verification is only meaningful once the refresh worker exists to consume the adapter and persist snapshots. Runtime signal reads will use persisted snapshots, not synchronous Yahoo calls.
+
+**Deliverables:** Verified live transport for the refresh worker, async transport support if needed, and a network-enabled smoke validation proving the refresh worker persists a valid snapshot with real Yahoo data.
+
+### Phase 10: Market Data Persistence
+
+Add PostgreSQL-backed market-data persistence so refresh work produces immutable snapshots instead of relying on a file-backed cache. Each refresh should record run metadata, one durable snapshot, per-symbol historical quote rows, missing-symbol rows, and snapshot freshness metadata. This phase establishes the storage model that later runtime reads can consume while preserving the fail-safe rule that stale or missing data resolves to WAIT.
+
+**Deliverables:** `market_data_refresh_run`, `market_data_snapshot`, `market_data_snapshot_quote`, and `market_data_snapshot_missing_symbol` tables; EF Core entities and configuration; migration support; snapshot freshness rules; and tests covering successful, partial, and failed refresh persistence.
+
 ## Codex Starting Brief
 
 ### Technology Choices
@@ -363,6 +377,7 @@ Dockerfile, operational documentation, final cross-validation against Python out
 - **xUnit** — test framework
 - **YamlDotNet** — YAML config parsing
 - **System.Text.Json** — JSON serialization (state, signals, audit)
+- **Direct Yahoo Finance HTTP integration** — current adapter path for daily prices and earnings fallback; final acceptance still depends on live smoke validation
 - **System.CommandLine** — CLI argument parsing
 - **Microsoft.Extensions.Logging** — structured console logging
 

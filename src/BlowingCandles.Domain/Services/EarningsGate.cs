@@ -15,12 +15,18 @@ public sealed class EarningsGate
     private readonly IEarningsCalendar _earningsCalendar;
     private readonly IMarketDataProvider _marketDataProvider;
     private readonly TimeSpan _blockWindow;
+    private readonly Action<string>? _diagnosticWriter;
 
-    public EarningsGate(IEarningsCalendar earningsCalendar, IMarketDataProvider marketDataProvider, int blockWindowHours = 48)
+    public EarningsGate(
+        IEarningsCalendar earningsCalendar,
+        IMarketDataProvider marketDataProvider,
+        int blockWindowHours = 48,
+        Action<string>? diagnosticWriter = null)
     {
         _earningsCalendar = earningsCalendar;
         _marketDataProvider = marketDataProvider;
         _blockWindow = TimeSpan.FromHours(blockWindowHours);
+        _diagnosticWriter = diagnosticWriter;
     }
 
     public IReadOnlyList<NewsSignal> Check(IEnumerable<string> watchlist, IClock clock)
@@ -37,8 +43,10 @@ public sealed class EarningsGate
         {
             calendar = _earningsCalendar.Load();
         }
-        catch
+        catch (Exception exception)
         {
+            _diagnosticWriter?.Invoke(
+                $"[EarningsGate] earnings calendar load failed: {exception.GetType().Name}: {exception.Message}");
             return tickers
                 .Select(ticker => CreateSignal(ticker, NewsState.WAIT, DataErrorReason, now))
                 .ToArray();
@@ -86,8 +94,10 @@ public sealed class EarningsGate
 
                 signals.Add(CreateSignal(ticker, NewsState.TRADE_OK, string.Join(",", reasons), now));
             }
-            catch
+            catch (Exception exception)
             {
+                _diagnosticWriter?.Invoke(
+                    $"[EarningsGate] {ticker} earnings lookup failed: {exception.GetType().Name}: {exception.Message}");
                 signals.Add(CreateSignal(ticker, NewsState.WAIT, DataErrorReason, now));
             }
         }
