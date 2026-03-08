@@ -85,18 +85,22 @@ This document describes the order in which major system capabilities should be i
 
 **Validation:** Unit tests cover local calendar happy paths, inclusive boundary behavior, expired calendar handling, Yahoo fallback outcomes, custom block-window configuration, ticker normalization, and fail-safe exception handling.
 
-## Phase 6: Technical Scoring
+## Phase 6: Technical Scoring ✅
+
+**Status: COMPLETED**
 
 **Capabilities:** Market analyst / SMA and RSI scoring
 
-**What to build:**
-- Daily price retrieval behind an interface
-- SMA50, SMA200, RSI14 calculations (using simple moving averages, not EMA)
-- Scoring and signal generation logic
+**What was built:**
+- `TechnicalScorer` domain service with SMA50, SMA200, RSI14 calculations using simple moving averages (not EMA/Wilder's smoothing)
+- Composite scoring logic: close vs SMA50 (+20), close vs SMA200 (+20), golden cross (+20), RSI oversold/neutral (+40/+20)
+- Action determination: BUY (score >= 80), SELL (score <= 20), WAIT (otherwise)
+- Fail-safe exception handling: all errors produce WAIT with `MARKET_DATA_ERROR`
+- Ticker normalization (trim + uppercase) with input-order preservation
 
 **Why sixth:** Most complex numerical logic. Requires careful validation against Python output. Yahoo Finance adapter is network-dependent.
 
-**Validation:** Unit tests with captured price fixtures. Verify SMA and RSI values match Python output to sufficient precision. Test boundary conditions (score exactly 80, RSI exactly 40/50).
+**Validation:** Unit tests covering all scoring thresholds (0, 20, 40, 60, 80, 100), RSI boundary conditions (0, 40, 50, >50, 100), insufficient/empty/null data handling, provider exceptions, ticker normalization, and input order preservation.
 
 ## Phase 7: Command Orchestration
 
