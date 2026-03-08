@@ -1,0 +1,2 @@
+AAPL: Action.WAIT | NewsState.TRADE_OK | Action.WAIT | INSUFFICIENT_DATA
+MSFT: Action.WAIT | NewsState.TRADE_OK | Action.WAIT | INSUFFICIENT_DATA

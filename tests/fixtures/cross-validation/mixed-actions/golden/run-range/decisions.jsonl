@@ -1,0 +1,12 @@
+{"ticker":"AAPL","action":"Action.BUY","news_state":"NewsState.TRADE_OK","market_action":"Action.BUY","reason":"ABOVE_SMA50,ABOVE_SMA200,GOLDEN_CROSS,RSI_OVERSOLD","timestamp":"2026-01-13T00:00:00+00:00"}
+{"ticker":"MSFT","action":"Action.SELL","news_state":"NewsState.TRADE_OK","market_action":"Action.SELL","reason":"RSI_NEUTRAL","timestamp":"2026-01-13T00:00:00+00:00"}
+{"ticker":"NVDA","action":"Action.WAIT","news_state":"NewsState.TRADE_OK","market_action":"Action.WAIT","reason":"ABOVE_SMA50,RSI_NEUTRAL","timestamp":"2026-01-13T00:00:00+00:00"}
+{"ticker":"TSLA","action":"Action.BUY","news_state":"NewsState.TRADE_OK","market_action":"Action.BUY","reason":"ABOVE_SMA50,ABOVE_SMA200,GOLDEN_CROSS,RSI_OVERSOLD","timestamp":"2026-01-13T00:00:00+00:00"}
+{"ticker":"AAPL","action":"Action.BUY","news_state":"NewsState.TRADE_OK","market_action":"Action.BUY","reason":"ABOVE_SMA50,ABOVE_SMA200,GOLDEN_CROSS,RSI_OVERSOLD","timestamp":"2026-01-14T00:00:00+00:00"}
+{"ticker":"MSFT","action":"Action.SELL","news_state":"NewsState.TRADE_OK","market_action":"Action.SELL","reason":"RSI_NEUTRAL","timestamp":"2026-01-14T00:00:00+00:00"}
+{"ticker":"NVDA","action":"Action.WAIT","news_state":"NewsState.TRADE_OK","market_action":"Action.WAIT","reason":"ABOVE_SMA50,RSI_NEUTRAL","timestamp":"2026-01-14T00:00:00+00:00"}
+{"ticker":"TSLA","action":"Action.WAIT","news_state":"NewsState.NO_TRADE","market_action":"Action.BUY","reason":"BLOCKED_BY_NEWS","timestamp":"2026-01-14T00:00:00+00:00"}
+{"ticker":"AAPL","action":"Action.BUY","news_state":"NewsState.TRADE_OK","market_action":"Action.BUY","reason":"ABOVE_SMA50,ABOVE_SMA200,GOLDEN_CROSS,RSI_OVERSOLD","timestamp":"2026-01-15T00:00:00+00:00"}
+{"ticker":"MSFT","action":"Action.SELL","news_state":"NewsState.TRADE_OK","market_action":"Action.SELL","reason":"RSI_NEUTRAL","timestamp":"2026-01-15T00:00:00+00:00"}
+{"ticker":"NVDA","action":"Action.WAIT","news_state":"NewsState.TRADE_OK","market_action":"Action.WAIT","reason":"ABOVE_SMA50,RSI_NEUTRAL","timestamp":"2026-01-15T00:00:00+00:00"}
+{"ticker":"TSLA","action":"Action.WAIT","news_state":"NewsState.NO_TRADE","market_action":"Action.BUY","reason":"BLOCKED_BY_NEWS","timestamp":"2026-01-15T00:00:00+00:00"}

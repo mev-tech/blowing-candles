@@ -1,0 +1,14 @@
+watchlist: [MSFT, AAPL]
+news:
+  local_earnings_calendar: earnings_calendar.json
+  block_window_hours: 48
+policy:
+  max_buys_per_day: 99
+  cooldown_minutes: 0
+output:
+  text_file: signals.txt
+  json_file: signals.json
+state:
+  path: data/state.json
+audit:
+  jsonl_path: decisions.jsonl

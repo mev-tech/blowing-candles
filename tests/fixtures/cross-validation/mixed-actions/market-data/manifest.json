@@ -1,0 +1,6 @@
+{
+  "AAPL": "buy.csv",
+  "MSFT": "sell.csv",
+  "NVDA": "wait.csv",
+  "TSLA": "buy.csv"
+}

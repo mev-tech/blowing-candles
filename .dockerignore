@@ -1,0 +1,10 @@
+signals-bot/
+**/bin/
+**/obj/
+logs/
+data/
+TestResults/
+**/TestResults/
+*.md
+.git/
+.gitignore

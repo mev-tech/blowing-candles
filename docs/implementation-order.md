@@ -120,16 +120,23 @@ This document describes the order in which major system capabilities should be i
 
 **Validation:** End-to-end pipeline tests with mocked providers verifying signal flow, output format tests for signals.txt/signals.json/audit JSONL, and handler tests for path isolation, clock selection, and run-range state accumulation.
 
-## Phase 8: Finalization
+## Phase 8: Finalization ✅
 
-**Capabilities:** Docker packaging, documentation, operational readiness
+**Status: COMPLETED**
 
-**What to build:**
-- Dockerfile for the C# application
-- Operational documentation
-- Final validation against Python reference across multiple scenarios
+**Capabilities:** Docker packaging, cross-validation harness, operational readiness
 
-**Validation:** Run both Python and C# implementations against the same inputs and compare all outputs.
+**What was built:**
+- Production-ready multi-stage Dockerfile with isolated NuGet restore layer, test stage that gates the build, `--no-restore` publish, non-root `app` user, and `LABEL` metadata
+- `docker-entrypoint.sh` allowing the image to behave as a CLI by default with command override support
+- `.dockerignore` excluding `signals-bot/`, build outputs, logs/data, test results, git metadata, and markdown
+- `BlowingCandles.CrossValidation.Tests` xUnit project with fixture-driven golden output tests
+- `FixtureMarketDataProvider` implementing `IMarketDataProvider` with CSV-based price history and asOfDate filtering
+- `ComparisonHelpers` for text (CRLF-normalized), JSON (structural), and JSONL (line-by-line structural) comparison
+- `GoldenOutputTests` covering run-asof, run-range, all-WAIT, and empty-watchlist scenarios against Python reference output
+- Three fixture sets under `tests/fixtures/cross-validation/`: mixed-actions, all-wait, empty-watchlist with golden signals.txt, signals.json, and audit JSONL artifacts
+
+**Validation:** All six golden output tests pass. All existing Domain, Application, and Infrastructure tests pass. Docker build succeeds with test stage gating.
 
 ## Decision Points
 

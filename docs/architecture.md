@@ -290,9 +290,20 @@ BlowingCandles/
 ├── tests/
 │   ├── BlowingCandles.Domain.Tests/
 │   ├── BlowingCandles.Infrastructure.Tests/
-│   └── BlowingCandles.Application.Tests/
+│   ├── BlowingCandles.Application.Tests/
+│   ├── BlowingCandles.CrossValidation.Tests/
+│   │   ├── FixtureMarketDataProvider.cs
+│   │   ├── ComparisonHelpers.cs
+│   │   └── GoldenOutputTests.cs
+│   └── fixtures/
+│       └── cross-validation/
+│           ├── mixed-actions/
+│           ├── all-wait/
+│           └── empty-watchlist/
 ├── config.yaml
 ├── earnings_calendar.json
+├── .dockerignore
+├── docker-entrypoint.sh
 └── Dockerfile
 ```
 

@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BlowingCandles.Infrastructu
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BlowingCandles.Application.Tests", "tests\BlowingCandles.Application.Tests\BlowingCandles.Application.Tests.csproj", "{0243A4C6-0278-40D5-B2DC-802F758FA898}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BlowingCandles.CrossValidation.Tests", "tests\BlowingCandles.CrossValidation.Tests\BlowingCandles.CrossValidation.Tests.csproj", "{1C9B2794-7749-4C66-9011-43A35A001DDC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -58,6 +60,10 @@ Global
 		{0243A4C6-0278-40D5-B2DC-802F758FA898}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0243A4C6-0278-40D5-B2DC-802F758FA898}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0243A4C6-0278-40D5-B2DC-802F758FA898}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1C9B2794-7749-4C66-9011-43A35A001DDC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1C9B2794-7749-4C66-9011-43A35A001DDC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1C9B2794-7749-4C66-9011-43A35A001DDC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1C9B2794-7749-4C66-9011-43A35A001DDC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{1C8F40C2-4468-4632-928B-C54BBDE6936D} = {E0F3550D-E8E0-43C7-A3D4-F1DB444BD48E}
@@ -67,5 +73,6 @@ Global
 		{F1828002-4A49-4E1C-95E5-545EBD7335F2} = {C8F78E2F-C718-41DA-BD31-48805872989D}
 		{0C83FB70-B7D0-4003-BFDB-EA195F9EADCF} = {C8F78E2F-C718-41DA-BD31-48805872989D}
 		{0243A4C6-0278-40D5-B2DC-802F758FA898} = {C8F78E2F-C718-41DA-BD31-48805872989D}
+		{1C9B2794-7749-4C66-9011-43A35A001DDC} = {C8F78E2F-C718-41DA-BD31-48805872989D}
 	EndGlobalSection
 EndGlobal

@@ -1,0 +1,34 @@
+[
+  {
+    "ticker": "AAPL",
+    "action": "BUY",
+    "newsState": "TRADE_OK",
+    "marketAction": "BUY",
+    "reason": "ABOVE_SMA50,ABOVE_SMA200,GOLDEN_CROSS,RSI_OVERSOLD",
+    "timestamp": "2026-01-15T00:00:00+00:00"
+  },
+  {
+    "ticker": "MSFT",
+    "action": "SELL",
+    "newsState": "TRADE_OK",
+    "marketAction": "SELL",
+    "reason": "RSI_NEUTRAL",
+    "timestamp": "2026-01-15T00:00:00+00:00"
+  },
+  {
+    "ticker": "NVDA",
+    "action": "WAIT",
+    "newsState": "TRADE_OK",
+    "marketAction": "WAIT",
+    "reason": "ABOVE_SMA50,RSI_NEUTRAL",
+    "timestamp": "2026-01-15T00:00:00+00:00"
+  },
+  {
+    "ticker": "TSLA",
+    "action": "WAIT",
+    "newsState": "NO_TRADE",
+    "marketAction": "BUY",
+    "reason": "BLOCKED_BY_NEWS",
+    "timestamp": "2026-01-15T00:00:00+00:00"
+  }
+]
