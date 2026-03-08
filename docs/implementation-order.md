@@ -68,18 +68,22 @@ This document describes the order in which major system capabilities should be i
 
 **Validation:** Focused tests for each gate (missing news, stale news, NO_TRADE, WAIT, TRADE_OK pass-through) and policy constraint (max buys, cooldown).
 
-## Phase 5: Earnings Gate
+## Phase 5: Earnings Gate ✅
+
+**Status: COMPLETED**
 
 **Capabilities:** News sentinel / earnings proximity checking
 
-**What to build:**
-- Local calendar parsing and earnings proximity logic
-- Yahoo Finance earnings date fallback (behind an interface)
-- Reuse calendar reader from Phase 1
+**What was built:**
+- `EarningsGate` domain logic for local calendar parsing and earnings proximity checks
+- Inclusive block-window enforcement (`0 <= delta <= block_window`) with `NO_TRADE` reason `EARNINGS_LT_48H`
+- Yahoo Finance earnings-date fallback behind `IMarketDataProvider` for tickers absent from the local calendar
+- Fail-safe handling for expired calendar entries, unavailable earnings data, and exception paths
+- CLI wiring to construct `EarningsGate` with config-driven `news.block_window_hours`
 
 **Why fifth:** Depends on config infrastructure from Phase 3. Local calendar path is deterministic and testable; Yahoo fallback is network-dependent and should be behind an interface.
 
-**Validation:** Unit tests with fixture calendars. Integration tests for Yahoo fallback are optional and should use captured responses.
+**Validation:** Unit tests cover local calendar happy paths, inclusive boundary behavior, expired calendar handling, Yahoo fallback outcomes, custom block-window configuration, ticker normalization, and fail-safe exception handling.
 
 ## Phase 6: Technical Scoring
 

@@ -54,7 +54,8 @@ public sealed class RunRangeHandler
         var marketDataProvider = new YahooFinanceAdapter();
         var earningsGate = new EarningsGate(
             new EarningsCalendarFile(config.News.ResolvedLocalEarningsCalendar ?? config.News.LocalEarningsCalendar ?? "earnings_calendar.json"),
-            marketDataProvider);
+            marketDataProvider,
+            config.News.BlockWindowHours);
         var technicalScorer = new TechnicalScorer(marketDataProvider);
         var tradeGovernor = new TradeGovernor(
             config.Policy.MaxBuysPerDay,

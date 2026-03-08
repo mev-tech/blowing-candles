@@ -28,7 +28,7 @@ public sealed class EarningsCalendarFile : IEarningsCalendar
 
         foreach (var date in dates)
         {
-            if (date > referenceTimeUtc)
+            if (date >= referenceTimeUtc)
             {
                 return date;
             }
