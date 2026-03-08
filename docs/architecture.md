@@ -79,7 +79,7 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 
 - `EarningsGate` — checks earnings proximity against the local calendar. Falls back to Yahoo Finance via `IMarketDataProvider` when a ticker is absent from the local calendar. Returns NewsSignal per ticker.
 - `TechnicalScorer` — computes SMA50, SMA200, RSI14 from daily closes. Scores and emits MarketSignal per ticker. All calculations use simple moving averages (rolling mean), not EMA/Wilder's smoothing.
-- `TradeGovernor` — merges NewsSignals and MarketSignals into FinalSignals. Applies gating priority and policy constraints (max buys per day, cooldown). Processes tickers in alphabetical order.
+- `TradeGovernor` — merges NewsSignals and MarketSignals into FinalSignals. Applies gating priority and policy constraints (max buys per day, cooldown, news TTL). Processes tickers in alphabetical order. A NewsSignal older than `news_ttl_minutes` (default: 180) is treated as stale and produces WAIT with reason `DATA_STALE`.
 
 ### Infrastructure Layer
 
@@ -92,8 +92,8 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 
 ### Application Layer
 
-- `SignalPipeline` — orchestrates the three-service pipeline: earnings gate, technical scorer, trade governor. Single method: `Run(watchlist, clock) -> List<FinalSignal>`.
-- `OutputRenderer` — formats and writes `signals.txt` and `signals.json`. Single implementation shared by all commands. Uses plain enum strings (`"BUY"`) in JSON output and prefixed strings (`"Action.BUY"`) in text and audit output.
+- `SignalPipeline` — orchestrates the three-service pipeline: earnings gate, technical scorer, trade governor. Normalizes the watchlist (trim, uppercase) and deduplicates tickers before passing them to services. Single method: `Run(watchlist, clock) -> List<FinalSignal>`.
+- `OutputRenderer` — formats and writes `signals.txt` and `signals.json`. Single implementation shared by all commands. Uses plain enum strings (`"BUY"`) in JSON output and prefixed strings (`"Action.BUY"`) in text output. `JsonlAuditWriter` uses the same prefixed format (`"Action.BUY"`, `"NewsState.TRADE_OK"`) in audit JSONL output.
 
 ### CLI Layer
 
@@ -137,7 +137,7 @@ news:
   local_earnings_calendar: earnings_calendar.json
   block_window_hours: 48
 policy:
-  max_buys_per_day: 99999999
+  max_buys_per_day: 99999999  # sample value; code default when omitted is int.MaxValue
   cooldown_minutes: 0
 output:
   text_file: signals.txt
@@ -148,7 +148,7 @@ audit:
   jsonl_path: logs/decisions.jsonl
 ```
 
-Loaded once at startup into a strongly-typed `AppConfig` record. No hot-reload, no environment variable overrides.
+Loaded once at startup into a strongly-typed `AppConfig` record. No hot-reload, no environment variable overrides. The `max_buys_per_day` value above is a sample; when the field is omitted from config, the code defaults to `int.MaxValue` (effectively unlimited).
 
 ### State
 

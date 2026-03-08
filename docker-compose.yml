@@ -1,0 +1,9 @@
+services:
+  app:
+    build: .
+    image: blowing-candles
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./earnings_calendar.json:/app/earnings_calendar.json:ro
+      - ./data:/app/data
+      - ./logs:/app/logs

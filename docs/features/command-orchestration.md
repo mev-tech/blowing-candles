@@ -87,6 +87,17 @@ Wire the full signal pipeline and finalize the three run commands (`run-asof`, `
 
 ## Implementation Notes
 
+### Shared dependency wiring
+
+**`RunCommandSupport`** (Cli/Handlers/RunCommandSupport.cs) is the composition root helper shared by all three run handlers. It encapsulates:
+
+- Factory methods for creating `IEarningsCalendar` and `IMarketDataProvider` implementations from config.
+- `RunSignalsCore` — constructs `EarningsGate`, `TechnicalScorer`, `TradeGovernor`, and `SignalPipeline`, then calls `pipeline.Run`. This is the single place where domain services are wired to infrastructure implementations.
+- Static path-building helpers: `ResolveAuditPath`, `BuildSimulationAuditPath`, `BuildSimulationStatePath`, `BuildSimulationOutputPath`.
+- Constructor accepts optional factory overrides for testability (e.g., injecting mock providers in handler tests).
+
+Each run handler delegates signal generation to `RunCommandSupport.RunSignals` and is responsible only for clock selection, path resolution, output writing, audit appending, and console output.
+
 ### Components to modify
 
 1. **`RunAsOfHandler`** (Cli/Handlers/RunAsOfHandler.cs) — update console output from "scaffold signals" to production messages. Verify all path-building logic is correct.
