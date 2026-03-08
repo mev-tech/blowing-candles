@@ -1,11 +1,8 @@
 using BlowingCandles.Application;
-using BlowingCandles.Domain.Services;
 using BlowingCandles.Infrastructure.Audit;
-using BlowingCandles.Infrastructure.Calendar;
 using BlowingCandles.Infrastructure.Clock;
 using BlowingCandles.Infrastructure.Config;
-using BlowingCandles.Infrastructure.MarketData;
-using BlowingCandles.Infrastructure.State;
+using BlowingCandles.Domain.Interfaces;
 
 namespace BlowingCandles.Cli.Handlers;
 
@@ -13,53 +10,34 @@ public sealed class RunRealtimeHandler
 {
     private readonly YamlConfigLoader _configLoader;
     private readonly OutputRenderer _outputRenderer;
+    private readonly RunCommandSupport _support;
+    private readonly Func<IClock> _clockFactory;
 
-    public RunRealtimeHandler(YamlConfigLoader configLoader, OutputRenderer outputRenderer)
+    public RunRealtimeHandler(
+        YamlConfigLoader configLoader,
+        OutputRenderer outputRenderer,
+        RunCommandSupport? support = null,
+        Func<IClock>? clockFactory = null)
     {
         _configLoader = configLoader;
         _outputRenderer = outputRenderer;
+        _support = support ?? new RunCommandSupport();
+        _clockFactory = clockFactory ?? (() => new SystemClock());
     }
 
     public int Handle(string configPath)
     {
         var config = _configLoader.Load(configPath);
-        var clock = new SystemClock();
-        var pipeline = CreatePipeline(config);
-        var signals = pipeline.Run(config.Watchlist, clock);
-        var auditPath = ResolveAuditPath(config, configPath);
+        var clock = _clockFactory();
+        var signals = _support.RunSignals(config, config.State.Path, clock);
+        var auditPath = RunCommandSupport.ResolveAuditPath(config, configPath);
 
         _outputRenderer.WriteSignals(config.Output.TextFile, config.Output.JsonFile, signals);
         new JsonlAuditWriter(auditPath).Append(signals);
 
-        Console.WriteLine($"Generated {signals.Count} scaffold signals.");
+        Console.WriteLine($"Generated {signals.Count} signals.");
         Console.WriteLine($"Text output: {config.Output.TextFile}");
         Console.WriteLine($"JSON output: {config.Output.JsonFile}");
         return 0;
-    }
-
-    private static SignalPipeline CreatePipeline(AppConfig config)
-    {
-        var marketDataProvider = new YahooFinanceAdapter();
-        var earningsGate = new EarningsGate(
-            new EarningsCalendarFile(config.News.ResolvedLocalEarningsCalendar ?? config.News.LocalEarningsCalendar ?? "earnings_calendar.json"),
-            marketDataProvider,
-            config.News.BlockWindowHours);
-        var technicalScorer = new TechnicalScorer(marketDataProvider);
-        var tradeGovernor = new TradeGovernor(
-            config.Policy.MaxBuysPerDay,
-            config.Policy.CooldownMinutes,
-            new JsonStateStore(config.State.Path));
-        return new SignalPipeline(earningsGate, technicalScorer, tradeGovernor);
-    }
-
-    private static string ResolveAuditPath(AppConfig config, string configPath)
-    {
-        if (!string.IsNullOrWhiteSpace(config.Audit.ResolvedJsonlPath))
-        {
-            return config.Audit.ResolvedJsonlPath;
-        }
-
-        var baseDirectory = Path.GetDirectoryName(Path.GetFullPath(configPath)) ?? Directory.GetCurrentDirectory();
-        return Path.GetFullPath(Path.Combine(baseDirectory, "logs/decisions.jsonl"));
     }
 }

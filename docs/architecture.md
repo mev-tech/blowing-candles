@@ -283,6 +283,7 @@ BlowingCandles/
 │       └── Handlers/
 │           ├── CheckCalendarHandler.cs
 │           ├── StatsPeriodsHandler.cs
+│           ├── RunCommandSupport.cs
 │           ├── RunAsOfHandler.cs
 │           ├── RunRealtimeHandler.cs
 │           └── RunRangeHandler.cs
