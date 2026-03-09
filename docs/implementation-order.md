@@ -287,3 +287,29 @@ The following decisions should be made before or during the indicated phase:
 | Signal run persistence model | 13 ✅ | Immutable signal runs with deduplicated results; DB-backed governor state with mode isolation; `SignalRunPersistenceService` and `SignalRunReadService`; `TradeGovernorDbStateStore` implementing `ITradeGovernorStateStore` |
 | Signal run ticker deduplication | 13 ✅ | Last-wins deduplication consistent with `MarketDataSnapshotPersistenceService` quote deduplication; `TickerCount` reflects deduplicated count |
 | Trade governor DB state store | 13 ✅ | Upsert pattern with concurrent-insert race handling; strict mode validation (`"live"` / `"simulation"`); day-reset matching `JsonStateStore` behavior |
+
+## API-First Execution Plan
+
+The following steps transform the application from a CLI-first tool into a long-running API service. The signal pipeline (`EarningsGate` → `TechnicalScorer` → `TradeGovernor`) remains identical. This is a transport and persistence change, not a domain logic change.
+
+### Step 1: Signal Run Persistence Schema ✅ (Phase 13)
+
+PostgreSQL tables for persisting signal pipeline results, trade governor state, and signal run metadata. Foundation for all subsequent steps.
+
+### Step 2: Shared Execution Service ← NEXT
+
+Extract orchestration from `RunCommandSupport.cs` and CLI handlers into `SignalRunExecutionService` in the Application layer. Single entry point for running the signal pipeline regardless of trigger source (API, worker, CLI). Executes pipeline, persists results to PostgreSQL, writes audit, returns structured result. Concurrency guard via `SemaphoreSlim` per isolation mode.
+
+**Feature spec:** `docs/features/signal-run-execution-service.md`
+
+### Step 3: API Endpoints and DB-Backed Reads
+
+Extend the API with write endpoints (`POST /api/runs/realtime`, `POST /api/runs/asof`, `POST /api/runs/range`) and switch read endpoints from file-backed (`SignalsFileReader`) to DB-backed (`SignalRunReadService`). Add run history (`GET /api/runs`, `GET /api/runs/{id}`) and health/readiness endpoints.
+
+### Step 4: Background Worker
+
+`SignalGenerationWorker : BackgroundService` that runs signal generation on a configurable schedule. Replaces the external cron + CLI pattern. Calls `ISignalRunExecutionService.RunRealtime()` with trigger source `"worker"`. Respects the same concurrency semaphore as API-triggered runs.
+
+### Step 5: Containerized Service and Cleanup
+
+Make the API the default and only runtime surface. Update `docker-compose.yml`, `Dockerfile`, and `docker-entrypoint.sh`. Optionally remove the CLI project. Remove `SignalsFileReader`, file write-behind, and `JsonStateStore` once DB equivalents are validated.
