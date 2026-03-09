@@ -33,14 +33,41 @@ public sealed class PersistenceDependencyInjectionTests
     }
 
     [Fact]
-    public void AddPersistence_ValidConnectionString_ResolvesAppDbContext()
+    public async Task PostgreSqlHealthCheck_UnreachableDatabase_ReturnsUnhealthy()
+    {
+        var dbContextOptions = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(
+                "Host=127.0.0.1;Port=1;Database=healthcheck;Username=postgres;Password=postgres;Timeout=1;Command Timeout=1")
+            .Options;
+
+        await using var dbContext = new AppDbContext(dbContextOptions);
+        var healthCheck = new PostgreSqlHealthCheck(dbContext);
+
+        var result = await healthCheck.CheckHealthAsync(new HealthCheckContext());
+
+        Assert.Equal(HealthStatus.Unhealthy, result.Status);
+        Assert.NotNull(result.Exception);
+    }
+}
+
+[Collection(PostgresContainerCollection.Name)]
+public sealed class PersistenceDependencyInjectionPostgresTests
+{
+    private readonly PostgresContainerFixture _fixture;
+
+    public PersistenceDependencyInjectionPostgresTests(PostgresContainerFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    [Fact]
+    public async Task AddPersistence_ValidConnectionString_ResolvesAppDbContext()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    ["ConnectionStrings:AppDb"] =
-                        "Host=localhost;Port=5432;Database=blowing_candles;Username=postgres;Password=postgres",
+                    ["ConnectionStrings:AppDb"] = _fixture.ConnectionString,
                     ["Persistence:CommandTimeoutSeconds"] = "45",
                     ["Persistence:EnableDetailedErrors"] = "true",
                     ["Persistence:EnableSensitiveDataLogging"] = "true"
@@ -58,25 +85,9 @@ public sealed class PersistenceDependencyInjectionTests
 
         Assert.NotNull(dbContext);
         Assert.Equal("Npgsql.EntityFrameworkCore.PostgreSQL", dbContext.Database.ProviderName);
+        Assert.True(await dbContext.Database.CanConnectAsync());
         Assert.Equal(45, options.CommandTimeoutSeconds);
         Assert.True(options.EnableDetailedErrors);
         Assert.True(options.EnableSensitiveDataLogging);
-    }
-
-    [Fact]
-    public async Task PostgreSqlHealthCheck_UnreachableDatabase_ReturnsUnhealthy()
-    {
-        var dbContextOptions = new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(
-                "Host=127.0.0.1;Port=1;Database=healthcheck;Username=postgres;Password=postgres;Timeout=1;Command Timeout=1")
-            .Options;
-
-        await using var dbContext = new AppDbContext(dbContextOptions);
-        var healthCheck = new PostgreSqlHealthCheck(dbContext);
-
-        var result = await healthCheck.CheckHealthAsync(new HealthCheckContext());
-
-        Assert.Equal(HealthStatus.Unhealthy, result.Status);
-        Assert.NotNull(result.Exception);
     }
 }

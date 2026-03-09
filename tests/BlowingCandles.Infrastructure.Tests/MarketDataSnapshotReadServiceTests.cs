@@ -8,15 +8,23 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BlowingCandles.Infrastructure.Tests;
 
+[Collection(PostgresContainerCollection.Name)]
 public sealed class MarketDataSnapshotReadServiceTests
 {
-    [Fact]
-    public void GetLivePriceHistory_ExpiredSnapshot_ReturnsEmpty()
+    private readonly PostgresContainerFixture _fixture;
+
+    public MarketDataSnapshotReadServiceTests(PostgresContainerFixture fixture)
     {
-        using var dbContext = CreateInMemoryContext();
-        SeedSnapshot(
+        _fixture = fixture;
+    }
+
+    [Fact]
+    public async Task GetLivePriceHistory_ExpiredSnapshot_ReturnsEmpty()
+    {
+        await _fixture.ResetAsync();
+        await using var dbContext = _fixture.CreateDbContext();
+        await SeedSnapshotAsync(
             dbContext,
-            snapshotId: 1,
             asOfDate: new DateOnly(2026, 3, 8),
             capturedAtUtc: new DateTimeOffset(2026, 3, 8, 20, 0, 0, TimeSpan.Zero),
             freshUntilUtc: new DateTimeOffset(2026, 3, 8, 20, 5, 0, TimeSpan.Zero),
@@ -34,21 +42,20 @@ public sealed class MarketDataSnapshotReadServiceTests
     }
 
     [Fact]
-    public void GetHistoricalPriceHistory_ExpiredSnapshotStillSelectableByAsOfDate()
+    public async Task GetHistoricalPriceHistory_ExpiredSnapshotStillSelectableByAsOfDate()
     {
-        using var dbContext = CreateInMemoryContext();
-        SeedSnapshot(
+        await _fixture.ResetAsync();
+        await using var dbContext = _fixture.CreateDbContext();
+        await SeedSnapshotAsync(
             dbContext,
-            snapshotId: 1,
             asOfDate: new DateOnly(2026, 3, 7),
             capturedAtUtc: new DateTimeOffset(2026, 3, 7, 20, 0, 0, TimeSpan.Zero),
             freshUntilUtc: new DateTimeOffset(2026, 3, 7, 21, 0, 0, TimeSpan.Zero),
             status: MarketDataSnapshotStatus.Complete,
             symbol: "AAPL",
             close: 101m);
-        SeedSnapshot(
+        await SeedSnapshotAsync(
             dbContext,
-            snapshotId: 2,
             asOfDate: new DateOnly(2026, 3, 9),
             capturedAtUtc: new DateTimeOffset(2026, 3, 9, 20, 0, 0, TimeSpan.Zero),
             freshUntilUtc: new DateTimeOffset(2026, 3, 9, 21, 0, 0, TimeSpan.Zero),
@@ -64,12 +71,12 @@ public sealed class MarketDataSnapshotReadServiceTests
     }
 
     [Fact]
-    public void GetHistoricalPriceHistory_MissingSymbol_ReturnsEmpty()
+    public async Task GetHistoricalPriceHistory_MissingSymbol_ReturnsEmpty()
     {
-        using var dbContext = CreateInMemoryContext();
-        SeedSnapshot(
+        await _fixture.ResetAsync();
+        await using var dbContext = _fixture.CreateDbContext();
+        var snapshotId = await SeedSnapshotAsync(
             dbContext,
-            snapshotId: 1,
             asOfDate: new DateOnly(2026, 3, 8),
             capturedAtUtc: new DateTimeOffset(2026, 3, 8, 20, 0, 0, TimeSpan.Zero),
             freshUntilUtc: new DateTimeOffset(2026, 3, 8, 21, 0, 0, TimeSpan.Zero),
@@ -79,14 +86,13 @@ public sealed class MarketDataSnapshotReadServiceTests
         dbContext.MarketDataSnapshotMissingSymbols.Add(
             new MarketDataSnapshotMissingSymbolEntity
             {
-                Id = 10,
-                SnapshotId = 1,
+                SnapshotId = snapshotId,
                 Symbol = "MSFT",
                 Reason = MarketDataMissingSymbolReason.EmptySeries,
                 Detail = "no rows",
                 IsRetryable = true
             });
-        dbContext.SaveChanges();
+        await dbContext.SaveChangesAsync();
         var service = new MarketDataSnapshotReadService(dbContext);
 
         var bars = service.GetHistoricalPriceHistory("MSFT", new DateOnly(2026, 3, 8));
@@ -95,12 +101,12 @@ public sealed class MarketDataSnapshotReadServiceTests
     }
 
     [Fact]
-    public void LiveSnapshotProvider_ReadsFromFreshSnapshotAndDelegatesEarningsLookup()
+    public async Task LiveSnapshotProvider_ReadsFromFreshSnapshotAndDelegatesEarningsLookup()
     {
-        using var dbContext = CreateInMemoryContext();
-        SeedSnapshot(
+        await _fixture.ResetAsync();
+        await using var dbContext = _fixture.CreateDbContext();
+        await SeedSnapshotAsync(
             dbContext,
-            snapshotId: 1,
             asOfDate: new DateOnly(2026, 3, 8),
             capturedAtUtc: new DateTimeOffset(2026, 3, 8, 20, 0, 0, TimeSpan.Zero),
             freshUntilUtc: new DateTimeOffset(2026, 3, 8, 22, 0, 0, TimeSpan.Zero),
@@ -124,12 +130,12 @@ public sealed class MarketDataSnapshotReadServiceTests
     }
 
     [Fact]
-    public void HistoricalSnapshotProvider_IgnoresExpiredTtlForAsOfReads()
+    public async Task HistoricalSnapshotProvider_IgnoresExpiredTtlForAsOfReads()
     {
-        using var dbContext = CreateInMemoryContext();
-        SeedSnapshot(
+        await _fixture.ResetAsync();
+        await using var dbContext = _fixture.CreateDbContext();
+        await SeedSnapshotAsync(
             dbContext,
-            snapshotId: 1,
             asOfDate: new DateOnly(2026, 3, 6),
             capturedAtUtc: new DateTimeOffset(2026, 3, 6, 20, 0, 0, TimeSpan.Zero),
             freshUntilUtc: new DateTimeOffset(2026, 3, 6, 21, 0, 0, TimeSpan.Zero),
@@ -147,18 +153,8 @@ public sealed class MarketDataSnapshotReadServiceTests
         Assert.Equal(99m, bar.Close);
     }
 
-    private static AppDbContext CreateInMemoryContext()
-    {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
-            .Options;
-
-        return new AppDbContext(options);
-    }
-
-    private static void SeedSnapshot(
+    private static async Task<long> SeedSnapshotAsync(
         AppDbContext dbContext,
-        long snapshotId,
         DateOnly asOfDate,
         DateTimeOffset capturedAtUtc,
         DateTimeOffset freshUntilUtc,
@@ -168,7 +164,6 @@ public sealed class MarketDataSnapshotReadServiceTests
     {
         var run = new MarketDataRefreshRunEntity
         {
-            Id = snapshotId,
             RequestedAsOfDate = asOfDate,
             StartedAtUtc = capturedAtUtc.AddMinutes(-30),
             CompletedAtUtc = capturedAtUtc,
@@ -183,8 +178,7 @@ public sealed class MarketDataSnapshotReadServiceTests
         };
         var snapshot = new MarketDataSnapshotEntity
         {
-            Id = snapshotId,
-            RefreshRunId = run.Id,
+            RefreshRun = run,
             AsOfDate = asOfDate,
             CapturedAtUtc = capturedAtUtc,
             FreshnessTtlSeconds = (int)Math.Max(1, (freshUntilUtc - capturedAtUtc).TotalSeconds),
@@ -198,8 +192,7 @@ public sealed class MarketDataSnapshotReadServiceTests
         };
         var quote = new MarketDataSnapshotQuoteEntity
         {
-            Id = snapshotId,
-            SnapshotId = snapshot.Id,
+            Snapshot = snapshot,
             Symbol = symbol,
             QuoteDate = asOfDate,
             MarketTimestampUtc = new DateTimeOffset(asOfDate.ToDateTime(new TimeOnly(20, 0), DateTimeKind.Utc)),
@@ -210,10 +203,13 @@ public sealed class MarketDataSnapshotReadServiceTests
             Volume = 1000
         };
 
-        dbContext.MarketDataRefreshRuns.Add(run);
+        run.Snapshot = snapshot;
+        snapshot.Quotes.Add(quote);
+
         dbContext.MarketDataSnapshots.Add(snapshot);
-        dbContext.MarketDataSnapshotQuotes.Add(quote);
-        dbContext.SaveChanges();
+        await dbContext.SaveChangesAsync();
+
+        return snapshot.Id;
     }
 
     private sealed class StubMarketDataProvider : IMarketDataProvider

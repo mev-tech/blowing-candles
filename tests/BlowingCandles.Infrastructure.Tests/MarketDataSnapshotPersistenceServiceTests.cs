@@ -6,12 +6,21 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BlowingCandles.Infrastructure.Tests;
 
+[Collection(PostgresContainerCollection.Name)]
 public sealed class MarketDataSnapshotPersistenceServiceTests
 {
-    [Fact]
-    public void PersistRefresh_FullSuccess_WritesSucceededRunAndCompleteSnapshot()
+    private readonly PostgresContainerFixture _fixture;
+
+    public MarketDataSnapshotPersistenceServiceTests(PostgresContainerFixture fixture)
     {
-        using var dbContext = CreateInMemoryContext();
+        _fixture = fixture;
+    }
+
+    [Fact]
+    public async Task PersistRefresh_FullSuccess_WritesSucceededRunAndCompleteSnapshot()
+    {
+        await _fixture.ResetAsync();
+        await using var dbContext = _fixture.CreateDbContext();
         var service = new MarketDataSnapshotPersistenceService(dbContext);
         var capturedAtUtc = new DateTimeOffset(2026, 3, 8, 20, 0, 0, TimeSpan.Zero);
 
@@ -36,6 +45,8 @@ public sealed class MarketDataSnapshotPersistenceServiceTests
         Assert.Equal(MarketDataRefreshRunStatus.Succeeded, result.Status);
         Assert.Equal(run.Id, result.RefreshRunId);
         Assert.Equal(snapshot.Id, result.SnapshotId);
+        Assert.Equal(1L, run.Id);
+        Assert.Equal(1L, snapshot.Id);
         Assert.Equal(MarketDataRefreshRunStatus.Succeeded, run.Status);
         Assert.Equal(2, run.RequestedSymbolCount);
         Assert.Equal(2, run.PersistedSymbolCount);
@@ -53,9 +64,10 @@ public sealed class MarketDataSnapshotPersistenceServiceTests
     }
 
     [Fact]
-    public void PersistRefresh_PartialSuccess_WritesMissingSymbolsAndPartialStatuses()
+    public async Task PersistRefresh_PartialSuccess_WritesMissingSymbolsAndPartialStatuses()
     {
-        using var dbContext = CreateInMemoryContext();
+        await _fixture.ResetAsync();
+        await using var dbContext = _fixture.CreateDbContext();
         var service = new MarketDataSnapshotPersistenceService(dbContext);
 
         var result = service.PersistRefresh(
@@ -88,9 +100,10 @@ public sealed class MarketDataSnapshotPersistenceServiceTests
     }
 
     [Fact]
-    public void PersistRefresh_TotalFailure_WritesFailedRunWithoutSnapshot()
+    public async Task PersistRefresh_TotalFailure_WritesFailedRunWithoutSnapshot()
     {
-        using var dbContext = CreateInMemoryContext();
+        await _fixture.ResetAsync();
+        await using var dbContext = _fixture.CreateDbContext();
         var service = new MarketDataSnapshotPersistenceService(dbContext);
 
         var result = service.PersistRefresh(
@@ -111,6 +124,7 @@ public sealed class MarketDataSnapshotPersistenceServiceTests
 
         Assert.Equal(MarketDataRefreshRunStatus.Failed, result.Status);
         Assert.Null(result.SnapshotId);
+        Assert.Equal(1L, run.Id);
         Assert.Equal(MarketDataRefreshRunStatus.Failed, run.Status);
         Assert.Equal("transport_error", run.ErrorCode);
         Assert.Equal("provider timed out", run.ErrorMessage);
@@ -120,9 +134,10 @@ public sealed class MarketDataSnapshotPersistenceServiceTests
     }
 
     [Fact]
-    public void PersistRefresh_DeduplicatesBarsBySymbolAndQuoteDate()
+    public async Task PersistRefresh_DeduplicatesBarsBySymbolAndQuoteDate()
     {
-        using var dbContext = CreateInMemoryContext();
+        await _fixture.ResetAsync();
+        await using var dbContext = _fixture.CreateDbContext();
         var service = new MarketDataSnapshotPersistenceService(dbContext);
 
         service.PersistRefresh(
@@ -166,9 +181,10 @@ public sealed class MarketDataSnapshotPersistenceServiceTests
     }
 
     [Fact]
-    public void PersistRefresh_SymbolCannotBePersistedAndMissingInSameSnapshot()
+    public async Task PersistRefresh_SymbolCannotBePersistedAndMissingInSameSnapshot()
     {
-        using var dbContext = CreateInMemoryContext();
+        await _fixture.ResetAsync();
+        await using var dbContext = _fixture.CreateDbContext();
         var service = new MarketDataSnapshotPersistenceService(dbContext);
 
         var exception = Assert.Throws<InvalidOperationException>(
@@ -185,15 +201,6 @@ public sealed class MarketDataSnapshotPersistenceServiceTests
                     [new PersistedMarketDataMissingSymbol("AAPL", MarketDataMissingSymbolReason.ProviderError, null, true)])));
 
         Assert.Contains("both persisted and missing", exception.Message, StringComparison.Ordinal);
-    }
-
-    private static AppDbContext CreateInMemoryContext()
-    {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
-            .Options;
-
-        return new AppDbContext(options);
     }
 
     private static PersistedMarketDataSymbol CreateSymbol(

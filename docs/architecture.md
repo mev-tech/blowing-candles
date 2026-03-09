@@ -4,25 +4,29 @@
 
 The C# application is a synchronous, single-process CLI that generates manual trading signals for a small equity watchlist. It replaces the Python `signals-bot` with identical behavior and cleaner structure.
 
-The system follows a pipeline architecture: configuration flows in, three domain services execute in sequence (earnings gate, technical scoring, trade governance), and results flow out to files. There is no API, no scheduler, no background processing. Each invocation runs to completion and exits.
+The system follows a pipeline architecture: configuration flows in, three domain services execute in sequence (earnings gate, technical scoring, trade governance), and results flow out to files. A minimal REST API provides HTTP access to the generated signals. Each CLI invocation runs to completion and exits; the API runs as a long-lived process serving the latest `signals.json` on demand.
 
-The codebase is organized into four projects following a simplified layered architecture:
+The codebase is organized into five projects following a simplified layered architecture:
 
 - **Domain** — enums, signal models, computation logic, service interfaces
 - **Infrastructure** — file I/O, Yahoo Finance adapter, config parsing, PostgreSQL persistence
-- **Application** — pipeline orchestration, output rendering
+- **Application** — pipeline orchestration, output rendering, signal serialization
 - **CLI** — entry point, command parsing, dependency wiring
+- **Api** — minimal ASP.NET Core Web API for signal retrieval over HTTP
 
 ```mermaid
 flowchart TD
     CLI["CLI\nProgram.cs, Handlers"]
-    APP["Application\nSignalPipeline, OutputRenderer"]
+    API["Api\nApiHost, SignalsFileReader"]
+    APP["Application\nSignalPipeline, OutputRenderer,\nSignalsJsonSerializer"]
     INFRA["Infrastructure\nYamlConfigLoader, JsonStateStore,\nJsonlAuditWriter, EarningsCalendarFile,\nYahooFinanceAdapter, Persistence"]
     DB[("PostgreSQL\nmarket_data_*")]
     DOMAIN["Domain\nEarningsGate, TechnicalScorer,\nTradeGovernor, Models, Interfaces"]
 
     CLI --> APP
     CLI --> INFRA
+    API --> APP
+    API --> INFRA
     APP --> DOMAIN
     INFRA -.->|implements| DOMAIN
     INFRA --> DB
@@ -103,11 +107,18 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 
 - `SignalPipeline` — orchestrates the three-service pipeline: earnings gate, technical scorer, trade governor. Normalizes the watchlist (trim, uppercase) and deduplicates tickers before passing them to services. Single method: `Run(watchlist, clock) -> List<FinalSignal>`.
 - `OutputRenderer` — formats and writes `signals.txt` and `signals.json`. Single implementation shared by all commands. Uses plain enum strings (`"BUY"`) in JSON output and prefixed strings (`"Action.BUY"`) in text output. `JsonlAuditWriter` uses the same prefixed format (`"Action.BUY"`, `"NewsState.TRADE_OK"`) in audit JSONL output.
+- `SignalsJsonSerializer` — shared JSON serialization for `signals.json`. Converts `FinalSignal` domain objects to/from `SignalFileEntry` records using `JsonSerializerDefaults.Web` (camelCase). Used by both `OutputRenderer` (write) and the API (read). Exposes `JsonOptions` for explicit use by API endpoints.
 
 ### CLI Layer
 
 - `Program.cs` — entry point. Parses commands and arguments, wires dependencies, delegates to the appropriate command handler.
 - One handler class per command: `CheckCalendarHandler`, `StatsPeriodsHandler`, `RunAsOfHandler`, `RunRealtimeHandler`, `RunRangeHandler`.
+
+### Api Layer
+
+- `Program.cs` — entry point. Delegates to `ApiHost.Build()` for ASP.NET Core initialization.
+- `ApiHost` — configures minimal API endpoints (`GET /api/signals`, `GET /api/signals/{ticker}`), reads `config.yaml` to resolve the `signals.json` path, and applies URL defaults.
+- `SignalsFileReader` — reads and deserializes `signals.json` on each request via `SignalsJsonSerializer`. Returns a result type (`SignalsFileReadResult`) mapping file I/O outcomes to HTTP status codes (200, 404, 503).
 
 ## Data Flow
 
@@ -137,6 +148,9 @@ flowchart TD
     OR --> TXT["signals.txt"]
     OR --> JSON["signals.json"]
     AW --> JSONL["logs/decisions.jsonl"]
+
+    JSON --> API_READ["Api\nSignalsFileReader"]
+    API_READ --> HTTP["HTTP Response\nGET /api/signals"]
 ```
 
 ## Configuration and State Management
@@ -326,7 +340,14 @@ BlowingCandles/
 │   │           └── AddMarketDataPersistence.cs
 │   ├── BlowingCandles.Application/
 │   │   ├── SignalPipeline.cs
-│   │   └── OutputRenderer.cs
+│   │   ├── OutputRenderer.cs
+│   │   └── SignalsJsonSerializer.cs
+│   ├── BlowingCandles.Api/
+│   │   ├── BlowingCandles.Api.csproj
+│   │   ├── Program.cs
+│   │   ├── ApiHost.cs
+│   │   └── Services/
+│   │       └── SignalsFileReader.cs
 │   └── BlowingCandles.Cli/
 │       ├── Program.cs
 │       ├── appsettings.json
@@ -342,6 +363,9 @@ BlowingCandles/
 │   ├── BlowingCandles.Domain.Tests/
 │   ├── BlowingCandles.Infrastructure.Tests/
 │   ├── BlowingCandles.Application.Tests/
+│   ├── BlowingCandles.Api.Tests/
+│   │   ├── BlowingCandles.Api.Tests.csproj
+│   │   └── SignalsEndpointTests.cs
 │   ├── BlowingCandles.CrossValidation.Tests/
 │   │   ├── FixtureMarketDataProvider.cs
 │   │   ├── ComparisonHelpers.cs
@@ -427,9 +451,9 @@ Replace InMemory and hardcoded-localhost database tests with Testcontainers for 
 
 ### Phase 12: REST API Endpoints
 
-Minimal ASP.NET Core Web API for signal retrieval over HTTP. Thin read layer over existing pipeline output.
+Minimal ASP.NET Core Web API for signal retrieval over HTTP. Thin read layer over existing pipeline output. `BlowingCandles.Api` project with `ApiHost`, `SignalsFileReader`, shared `SignalsJsonSerializer`, Docker `api` entrypoint, and integration tests.
 
-**Deliverables:** `GET /api/signals` and `GET /api/signals/{ticker}` endpoints with integration tests.
+**Deliverables:** `GET /api/signals` and `GET /api/signals/{ticker}` endpoints; `SignalsFileReader` with result-type error handling; `SignalsJsonSerializer` shared between `OutputRenderer` and API; Docker `api` entrypoint; integration tests covering all HTTP status codes and edge cases. ✅
 
 ## Codex Starting Brief
 
@@ -445,6 +469,7 @@ Minimal ASP.NET Core Web API for signal retrieval over HTTP. Thin read layer ove
 - **Npgsql.EntityFrameworkCore.PostgreSQL** — EF Core provider for PostgreSQL market-data persistence
 - **WireMock.Net** — in-process HTTP stub server for Yahoo Finance contract tests (test-only dependency); may migrate to `WireMock.Net.Testcontainers` in Phase 11
 - **Testcontainers.PostgreSql** — ephemeral PostgreSQL containers for integration tests (test-only dependency)
+- **Microsoft.AspNetCore.App** — framework reference for the REST API project (`BlowingCandles.Api`)
 
 ### Key Constraints
 
@@ -458,7 +483,6 @@ Minimal ASP.NET Core Web API for signal retrieval over HTTP. Thin read layer ove
 
 ### What Not to Build
 
-- No API server, no HTTP endpoints
 - No message queue
 - No retry logic for Yahoo Finance
 - No in-memory caching layer (market-data reads come from PostgreSQL snapshots)

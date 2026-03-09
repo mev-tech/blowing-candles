@@ -1,15 +1,9 @@
-using System.Text.Json;
 using BlowingCandles.Domain.Models;
 
 namespace BlowingCandles.Application;
 
 public sealed class OutputRenderer
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true
-    };
-
     public void WriteSignals(string textFilePath, string jsonFilePath, IEnumerable<FinalSignal> signals)
     {
         var materializedSignals = signals.ToArray();
@@ -28,18 +22,7 @@ public sealed class OutputRenderer
     private static void WriteJson(string path, IReadOnlyList<FinalSignal> signals)
     {
         EnsureDirectory(path);
-
-        var payload = signals.Select(signal => new
-        {
-            ticker = signal.Ticker,
-            action = signal.Action.ToString(),
-            newsState = signal.NewsState.ToString(),
-            marketAction = signal.MarketAction.ToString(),
-            reason = signal.Reason,
-            timestamp = signal.Timestamp.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:sszzz")
-        });
-
-        File.WriteAllText(path, JsonSerializer.Serialize(payload, JsonOptions) + Environment.NewLine);
+        File.WriteAllText(path, SignalsJsonSerializer.Serialize(signals));
     }
 
     private static void EnsureDirectory(string path)

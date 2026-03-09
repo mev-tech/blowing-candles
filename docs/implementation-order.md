@@ -193,41 +193,49 @@ This document describes the order in which major system capabilities should be i
 
 **Validation:** `AppDbContextModelTests` verifying EF Core model snapshot consistency; `MarketDataSnapshotPersistenceServiceTests` covering full success, partial refresh, total failure, quote deduplication, coverage validation, negative-price rejection, and transactional rollback scenarios; `MarketDataSnapshotReadServiceTests` covering live freshness gating, historical as-of-date selection, missing-symbol exclusion, and empty-result paths; `PersistenceDependencyInjectionTests` verifying DI resolution. All 65 tests pass, solution builds with zero warnings.
 
-## Phase 11: Testcontainers Integration
+## Phase 11: Testcontainers Integration ✅
 
-**Status: NOT STARTED**
+**Status: COMPLETED**
 
 **Capabilities:** Real PostgreSQL integration testing via Testcontainers
 
-**What to build:**
-- `Testcontainers.PostgreSql` NuGet package added to `BlowingCandles.Infrastructure.Tests`
-- Shared xUnit collection fixture (`PostgresContainerFixture`) that starts a single `postgres:16-alpine` container per test run and applies the EF Core migration
-- Migration of `MarketDataSnapshotPersistenceServiceTests`, `MarketDataSnapshotReadServiceTests`, and `AppDbContextModelTests` from InMemory/hardcoded-localhost to the Testcontainers-managed PostgreSQL instance
-- `PersistenceDependencyInjectionTests` DI resolution test updated to use the Testcontainers connection string
-- Table truncation helper (`TRUNCATE ... CASCADE`) for per-test isolation
-- Removal of `Microsoft.EntityFrameworkCore.InMemory` package
-- Optional: migrate Yahoo Finance contract suite from in-process `WireMock.Net` to `WireMock.Net.Testcontainers` for Testcontainers consistency (see `docs/reviews/yahoo-finance-adapter-testcontainers-fixes.md`)
+**What was built:**
+- `Testcontainers.PostgreSql` NuGet package added to `BlowingCandles.Infrastructure.Tests`; `Microsoft.EntityFrameworkCore.InMemory` removed
+- Shared xUnit collection fixture (`PostgresContainerFixture`) with `IAsyncLifetime` that starts a single `postgres:16-alpine` container per test run and applies the EF Core migration
+- `PostgresContainerCollection` collection definition with `ICollectionFixture<PostgresContainerFixture>` for shared container lifecycle
+- `ResetAsync()` table truncation helper (`TRUNCATE TABLE market_data_refresh_run RESTART IDENTITY CASCADE`) for per-test isolation
+- `AppDbContextModelTests` migrated to Testcontainers: fixture start verification, snake_case table/constraint validation, unique index validation, check constraint violation (negative TTL), duplicate quote rejection, and cascade delete verification — all against real PostgreSQL
+- `MarketDataSnapshotPersistenceServiceTests` migrated to Testcontainers: full success, partial success, total failure, quote deduplication, and coverage validation tests running against real PostgreSQL
+- `MarketDataSnapshotReadServiceTests` migrated to Testcontainers: live freshness gating, historical as-of-date selection, missing-symbol exclusion, live snapshot provider delegation, and historical snapshot provider TTL bypass tests running against real PostgreSQL
+- `PersistenceDependencyInjectionTests` split into two classes: non-container tests (`PersistenceOptions` defaults, missing connection string, unreachable health check) remain standalone; DI resolution test (`AddPersistence_ValidConnectionString_ResolvesAppDbContext`) moved to `PersistenceDependencyInjectionPostgresTests` using the Testcontainers connection string
+- WireMock.Net Testcontainers migration deferred (see `docs/reviews/yahoo-finance-adapter-testcontainers-fixes.md`)
 
-**Why eleventh:** The persistence layer (Phase 10) is implemented with InMemory tests as a stopgap. InMemory does not enforce check constraints, unique indexes, cascade deletes, or PostgreSQL-specific type mappings. Testcontainers closes this gap by running the exact same migration against real PostgreSQL, validating the schema and service behavior together.
+**Why eleventh:** The persistence layer (Phase 10) was implemented with InMemory tests as a stopgap. InMemory does not enforce check constraints, unique indexes, cascade deletes, or PostgreSQL-specific type mappings. Testcontainers closes this gap by running the exact same migration against real PostgreSQL, validating the schema and service behavior together.
 
-**Validation:** All existing persistence tests pass against real PostgreSQL. Migration applies successfully as part of fixture setup. Unique constraints, check constraints, and cascade deletes are exercised by the test suite. No InMemory provider usage remains.
+**Validation:** All persistence tests pass against real PostgreSQL via Testcontainers. Migration applies successfully as part of fixture setup. Unique constraints, check constraints, and cascade deletes are exercised by the test suite. No InMemory provider usage remains. Non-container tests (POCO defaults, DI validation, unreachable health check) remain independent and pass without Docker.
 
-## Phase 12: REST API Endpoints
+## Phase 12: REST API Endpoints ✅
 
-**Status: NOT STARTED**
+**Status: COMPLETED**
 
 **Capabilities:** RESTful signal retrieval over HTTP
 
-**What to build:**
-- Minimal ASP.NET Core Web API project (`BlowingCandles.Api`) or extend the CLI with `Microsoft.AspNetCore` hosting
-- `GET /api/signals` — Returns the latest generated signals (reads from `signals.json`)
-- `GET /api/signals/{ticker}` — Returns the latest signal for a specific ticker
-- JSON responses using plain enum serialisation (consistent with `signals.json`)
-- No authentication required (local/operator use)
+**What was built:**
+- Minimal ASP.NET Core Web API project (`BlowingCandles.Api`) with `Program.cs` entry point and `ApiHost` static builder
+- `GET /api/signals` — returns the latest generated signals as a JSON array (reads from `signals.json`)
+- `GET /api/signals/{ticker}` — returns a single signal for the given ticker (case-insensitive), or HTTP 404
+- `SignalsFileReader` service encapsulating file I/O with result-type error handling (`NotFound`, `Corrupt`, `Unavailable` → HTTP 503)
+- `SignalsJsonSerializer` extracted to `BlowingCandles.Application` as shared serialization logic between `OutputRenderer` and the API, using `JsonSerializerDefaults.Web` (camelCase) with explicit `JsonSerializerOptions` passed to all `Results.Json()` calls
+- JSON responses using plain enum strings consistent with `signals.json` (`"BUY"`, not `"Action.BUY"`)
+- No authentication or authorization middleware (local/operator use)
+- Default listen URL `http://localhost:5000`, configurable via `--urls` or `ASPNETCORE_URLS`
+- Docker support: `api` entrypoint command in `docker-entrypoint.sh`, API published to `/app/api/`, port 5000 exposed
+- `BlowingCandles.Api.Tests` xUnit project with in-process hosting via `ApiHost.Build()`
+- Solution file updated with both `BlowingCandles.Api` and `BlowingCandles.Api.Tests`
 
-**Why twelfth:** All signal generation and market-data persistence workflows are complete. The API remains a thin read layer over existing pipeline output.
+**Why twelfth:** All signal generation and market-data persistence workflows are complete. The API is a thin read layer over existing pipeline output.
 
-**Validation:** Integration tests verifying correct HTTP status codes, JSON response structure, and ticker filtering.
+**Validation:** Integration tests covering valid signals (order preservation), case-insensitive ticker lookup, unknown ticker (404), missing file (503), empty array (200 with `[]`), and malformed JSON (503). All tests pass, solution builds with zero warnings.
 
 ## Decision Points
 
@@ -249,4 +257,4 @@ The following decisions should be made before or during the indicated phase:
 | Snapshot read policy | 10 | Live reads require a fresh snapshot (`FreshUntilUtc > now`); historical reads select the latest snapshot whose `as_of_date` is not newer than the requested simulation date |
 | Refresh persistence model | 10 | Persist immutable snapshots with explicit missing-symbol tracking; do not mutate prior snapshot rows in place |
 | PostgreSQL ORM | 10 | EF Core with Npgsql provider, fluent configuration, string-mapped enums |
-| Integration test infrastructure | 11 | Testcontainers with `postgres:16-alpine`, xUnit collection fixture, table truncation for isolation |
+| Integration test infrastructure | 11 ✅ | Testcontainers with `postgres:16-alpine`, xUnit collection fixture, table truncation for isolation; WireMock migration deferred |
