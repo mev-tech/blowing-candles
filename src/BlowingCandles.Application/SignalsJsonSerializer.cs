@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using BlowingCandles.Domain.Models;
 
 namespace BlowingCandles.Application;
@@ -17,6 +18,11 @@ public static class SignalsJsonSerializer
     {
         WriteIndented = true
     };
+
+    static SignalsJsonSerializer()
+    {
+        JsonOptions.Converters.Add(new JsonStringEnumConverter());
+    }
 
     public static string Serialize(IEnumerable<FinalSignal> signals)
     {

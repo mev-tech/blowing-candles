@@ -216,13 +216,13 @@ This document describes the order in which major system capabilities should be i
 
 ## Phase 12: REST API Endpoints ✅
 
-**Status: COMPLETED**
+**Status: COMPLETED (updated by Step 3 — API Endpoints and DB-Backed Reads)**
 
-**Capabilities:** RESTful signal retrieval over HTTP
+**Capabilities:** RESTful signal retrieval and pipeline triggering over HTTP, backed by PostgreSQL
 
-**What was built:**
+**What was built (original Phase 12):**
 - Minimal ASP.NET Core Web API project (`BlowingCandles.Api`) with `Program.cs` entry point and `ApiHost` static builder
-- `GET /api/signals` — returns the latest generated signals as a JSON array (reads from `signals.json`)
+- `GET /api/signals` — returns the latest generated signals as a JSON array (originally reads from `signals.json`)
 - `GET /api/signals/{ticker}` — returns a single signal for the given ticker (case-insensitive), or HTTP 404
 - `SignalsFileReader` service encapsulating file I/O with result-type error handling (`NotFound`, `Corrupt`, `Unavailable` → HTTP 503)
 - `SignalsJsonSerializer` extracted to `BlowingCandles.Application` as shared serialization logic between `OutputRenderer` and the API, using `JsonSerializerDefaults.Web` (camelCase) with explicit `JsonSerializerOptions` passed to all `Results.Json()` calls
@@ -233,9 +233,30 @@ This document describes the order in which major system capabilities should be i
 - `BlowingCandles.Api.Tests` xUnit project with in-process hosting via `ApiHost.Build()`
 - Solution file updated with both `BlowingCandles.Api` and `BlowingCandles.Api.Tests`
 
-**Why twelfth:** All signal generation and market-data persistence workflows are complete. The API is a thin read layer over existing pipeline output.
+**What was built (Step 3 — DB-backed reads and write endpoints):**
+- `GET /api/signals` switched from `SignalsFileReader` to `SignalRunReadService.GetLatestLiveRun()` with `SignalFileEntry` mapping for backward compatibility
+- `GET /api/signals/{ticker}` switched to DB-backed latest live run with case-insensitive ticker filter
+- `GET /api/runs` — returns recent run summaries (capped at 100) ordered by `startedAtUtc` descending, mapped to `RunSummaryResponse` (excludes signals)
+- `GET /api/runs/{runId:long}` — returns full run detail with signals from `SignalRunReadService.GetRunById()`, or 404
+- `POST /api/runs/realtime` — triggers realtime pipeline via `ISignalRunExecutionService.RunRealtime("api")`, returns 202
+- `POST /api/runs/asof` — parses `{ "asOfDate": "YYYY-MM-DD" }`, validates, triggers `RunAsOf("api", asOfDate)`, returns 202 or 400
+- `POST /api/runs/range` — parses `{ "startDate", "endDate" }`, validates range, triggers `RunRange("api", startDate, endDate)`, returns 202 or 400
+- `GET /health/live` — always returns 200 `{ "status": "Healthy" }` (liveness probe)
+- `GET /health/ready` — checks PostgreSQL via `PostgreSqlHealthCheck` with `"ready"` tag, returns 200 or 503 (readiness probe)
+- DI wiring: `AddPersistence()`, `ISignalRunExecutionService` scoped registration with `SignalRunExecutionService` factory, `AppConfig` singleton
+- `configurationOverrides` parameter on `ApiHost.Build()` for test-time connection string injection
+- Infrastructure configuration loading from `appsettings.json` and CLI project `appsettings.json` (fallback)
+- `JsonStringEnumConverter` added to `SignalsJsonSerializer.JsonOptions` for correct enum serialization on run endpoints
+- Try/catch on all read and write endpoints returning 503 with consistent error body on infrastructure failures
+- Unpersisted failure detection (`Status == Failed && RunId == 0`) returning 503 instead of 202 with broken result
+- `SignalsFileReader` retained but unwired from endpoints (removal deferred to Step 5)
 
-**Validation:** Integration tests covering valid signals (order preservation), case-insensitive ticker lookup, unknown ticker (404), missing file (503), empty array (200 with `[]`), and malformed JSON (503). All tests pass, solution builds with zero warnings.
+**Why twelfth:** All signal generation and market-data persistence workflows are complete. The API is a thin read/write layer over the execution service and persistence layer.
+
+**Validation:** Integration tests via Testcontainers PostgreSQL covering: DB-backed signal reads with ticker ordering, case-insensitive ticker lookup, empty DB / no live runs (200 empty array, 404 for ticker), run history list and detail with signals, missing run 404, POST realtime/asof/range with validation (202, 400), health endpoints (200 healthy, 503 unhealthy), 503 on DB unavailable for all read endpoints, 503 on DB unavailable for all POST endpoints, non-numeric run ID route (404 via `:long` constraint), and enum string serialization verification. All tests pass, solution builds with zero warnings.
+
+**Feature spec:** `docs/features/api-endpoints-db-backed-reads.md`
+**Fix spec:** `docs/reviews/api-endpoints-db-backed-reads-fixes.md`
 
 ## Phase 13: Signal Run Persistence ✅
 
@@ -288,6 +309,10 @@ The following decisions should be made before or during the indicated phase:
 | Signal run ticker deduplication | 13 ✅ | Last-wins deduplication consistent with `MarketDataSnapshotPersistenceService` quote deduplication; `TickerCount` reflects deduplicated count |
 | Trade governor DB state store | 13 ✅ | Upsert pattern with concurrent-insert race handling; strict mode validation (`"live"` / `"simulation"`); day-reset matching `JsonStateStore` behavior |
 | Shared execution service | Step 2 ✅ | `SignalRunExecutionService` in Application layer; wall-clock run timestamps; per-mode `SemaphoreSlim` concurrency; `RunCommandSupport` deleted; CLI handlers as thin wrappers |
+| API read migration | Step 3 ✅ | DB-backed reads via `SignalRunReadService`; `SignalsFileReader` retained but unwired; `SignalFileEntry` mapping for backward compatibility |
+| API write endpoints | Step 3 ✅ | `POST /api/runs/*` delegates to `ISignalRunExecutionService`; trigger source `"api"`; synchronous execution returning 202; try/catch with 503 on failure |
+| API health checks | Step 3 ✅ | `GET /health/live` (always 200) and `GET /health/ready` (PostgreSQL connectivity via `PostgreSqlHealthCheck` with `"ready"` tag) |
+| Enum serialization | Step 3 ✅ | `JsonStringEnumConverter` added to `SignalsJsonSerializer.JsonOptions` for correct enum string rendering on run endpoints |
 
 ## API-First Execution Plan
 
@@ -315,9 +340,13 @@ PostgreSQL tables for persisting signal pipeline results, trade governor state, 
 
 **Feature spec:** `docs/features/signal-run-execution-service.md`
 
-### Step 3: API Endpoints and DB-Backed Reads
+### Step 3: API Endpoints and DB-Backed Reads ✅ (Phase 12 updated)
 
-Extend the API with write endpoints (`POST /api/runs/realtime`, `POST /api/runs/asof`, `POST /api/runs/range`) and switch read endpoints from file-backed (`SignalsFileReader`) to DB-backed (`SignalRunReadService`). Add run history (`GET /api/runs`, `GET /api/runs/{id}`) and health/readiness endpoints.
+**Status: COMPLETED**
+
+Extended the API with write endpoints (`POST /api/runs/realtime`, `POST /api/runs/asof`, `POST /api/runs/range`) and switched read endpoints from file-backed (`SignalsFileReader`) to DB-backed (`SignalRunReadService`). Added run history (`GET /api/runs`, `GET /api/runs/{id}`) and health/readiness endpoints (`GET /health/live`, `GET /health/ready`). All endpoints use `SignalsJsonSerializer.JsonOptions` with `JsonStringEnumConverter`. Read and write endpoints return 503 on infrastructure failures.
+
+**Feature spec:** `docs/features/api-endpoints-db-backed-reads.md`
 
 ### Step 4: Background Worker
 

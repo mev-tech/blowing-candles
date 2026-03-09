@@ -17,7 +17,7 @@ The codebase is organized into five projects following a simplified layered arch
 ```mermaid
 flowchart TD
     CLI["CLI\nProgram.cs, Handlers"]
-    API["Api\nApiHost, SignalsFileReader"]
+    API["Api\nApiHost, SignalRunReadService,\nISignalRunExecutionService"]
     APP["Application\nSignalRunExecutionService, SignalPipeline,\nOutputRenderer, SignalsJsonSerializer"]
     INFRA["Infrastructure\nYamlConfigLoader, JsonStateStore,\nJsonlAuditWriter, EarningsCalendarFile,\nYahooFinanceAdapter, Persistence"]
     DB[("PostgreSQL\nmarket_data_*, signal_run*,\ntrade_governor_state")]
@@ -123,8 +123,19 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 ### Api Layer
 
 - `Program.cs` — entry point. Delegates to `ApiHost.Build()` for ASP.NET Core initialization.
-- `ApiHost` — configures minimal API endpoints (`GET /api/signals`, `GET /api/signals/{ticker}`), reads `config.yaml` to resolve the `signals.json` path, and applies URL defaults.
-- `SignalsFileReader` — reads and deserializes `signals.json` on each request via `SignalsJsonSerializer`. Returns a result type (`SignalsFileReadResult`) mapping file I/O outcomes to HTTP status codes (200, 404, 503).
+- `ApiHost` — configures minimal API endpoints, DI wiring (`AddPersistence`, `ISignalRunExecutionService`), health checks, and URL defaults. Endpoints:
+  - `GET /api/signals` — returns the latest completed live run's signals from PostgreSQL via `SignalRunReadService.GetLatestLiveRun()`, mapped to `SignalFileEntry` shape for backward compatibility.
+  - `GET /api/signals/{ticker}` — returns a single signal from the latest live run, filtered case-insensitively. Returns 404 if not found.
+  - `GET /api/runs` — returns recent run summaries (capped at 100) ordered by `startedAtUtc` descending.
+  - `GET /api/runs/{runId:long}` — returns a single run with signals, or 404.
+  - `POST /api/runs/realtime` — triggers a realtime signal pipeline run via `ISignalRunExecutionService`, returns 202.
+  - `POST /api/runs/asof` — triggers an as-of simulation run, validates `asOfDate`, returns 202 or 400.
+  - `POST /api/runs/range` — triggers a range simulation run, validates date range, returns 202 or 400.
+  - `GET /health/live` — always returns 200 (liveness probe).
+  - `GET /health/ready` — checks PostgreSQL connectivity via `PostgreSqlHealthCheck`, returns 200 or 503 (readiness probe).
+- All endpoints use `SignalsJsonSerializer.JsonOptions` (camelCase, `JsonStringEnumConverter`) for consistent serialization.
+- Read and write endpoints return 503 on infrastructure failures (DB unavailable, execution service errors).
+- `SignalsFileReader` — remains in the codebase but is no longer wired into endpoints (removal deferred to Step 5).
 
 ## Data Flow
 
@@ -162,8 +173,11 @@ flowchart TD
 
     PG_SIG --> SRR["SignalRunReadService"]
 
-    JSON --> API_READ["Api\nSignalsFileReader"]
-    API_READ --> HTTP["HTTP Response\nGET /api/signals"]
+    SRR --> API_READ["Api\nGET /api/signals\nGET /api/runs"]
+    API_READ --> HTTP["HTTP Response"]
+
+    API_WRITE["Api\nPOST /api/runs/*"] --> EXEC
+    API_WRITE --> HTTP
 ```
 
 ## Configuration and State Management
