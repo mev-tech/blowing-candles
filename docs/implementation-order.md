@@ -7,6 +7,7 @@ This document describes the order in which major system capabilities should be i
 - Start with capabilities that are deterministic and do not require external network access.
 - Build shared infrastructure (config, state, audit) early so later phases can reuse it.
 - Defer Yahoo Finance integration until the internal logic is solid and testable, then validate the live path before marking the phase complete.
+- Use mock-container contract tests for HTTP integrations when the external service cannot be run locally; keep those tests separate from live smoke validation.
 - Each phase should produce a working, testable capability.
 
 ## Phase 1: Project Scaffold and Calendar Validator ✅
@@ -140,9 +141,9 @@ This document describes the order in which major system capabilities should be i
 
 ## Phase 9: Yahoo Finance Adapter — Live Transport Verification
 
-**Status: DEFERRED (blocked on Phase 10/11)**
+**Status: DEFERRED (offline seams complete; live acceptance still blocked on the future refresh workflow)**
 
-**Capabilities:** Verified live Yahoo transport for the refresh worker
+**Capabilities:** Verified live Yahoo transport for the future refresh workflow
 
 **What landed:**
 - `YahooFinanceAdapter` implements `IMarketDataProvider` with internal seams: `YahooFinanceRequestFactory`, `IYahooFinanceTransport`, `YahooFinanceResponseParser`
@@ -152,33 +153,61 @@ This document describes the order in which major system capabilities should be i
 - 12 adapter-focused offline tests covering mapping, ordering, boundary, earnings, and error handling
 - Diagnostic writer plumbed through `EarningsGate` and `TechnicalScorer`
 
-**What remains (after Phase 10/11):**
+**What remains:**
+- Add a Testcontainers-backed mock HTTP server contract suite for `YahooFinanceHttpTransport` and `YahooFinanceAdapter` request/response behavior (see `docs/features/yahoo-finance-testcontainers.md`)
 - Verify or fix `YahooFinanceHttpTransport` against live Yahoo endpoints
-- If the refresh worker is async, add async transport support
-- Run a network-enabled smoke validation proving the refresh worker persists a valid snapshot
+- If the refresh workflow is async, add async transport support
+- Run a network-enabled smoke validation proving the refresh workflow persists a valid snapshot
 
-**Why deferred:** The adapter's primary consumer is the refresh worker (Phase 10), not the synchronous CLI pipeline. Runtime signal reads will use persisted snapshots, so fixing the live HTTP path only matters for the worker. Completing this before the worker exists produces no verifiable outcome.
+**Why deferred:** The adapter's primary consumer is the refresh worker built on top of snapshot persistence, not the synchronous CLI pipeline. A mock-container contract suite can and should land earlier, but Phase 9 still cannot close until the live HTTP path has been proven end-to-end by the future refresh workflow.
 
-**Validation:** The refresh worker produces a valid snapshot with real Yahoo data, adapter-focused offline tests pass, and the automated suite remains green.
+**Validation:** Mock-container contract tests pass without live network access, the refresh workflow produces a valid snapshot with real Yahoo data, adapter-focused offline tests pass, and the automated suite remains green.
 
-## Phase 10: Market Data Persistence
+## Phase 10: Market Data Persistence ✅
 
-**Status: NOT STARTED**
+**Status: COMPLETED**
 
 **Capabilities:** PostgreSQL-backed market-data snapshots with explicit refresh persistence
 
+**What was built:**
+- PostgreSQL schema with `market_data_refresh_run`, `market_data_snapshot`, `market_data_snapshot_quote`, and `market_data_snapshot_missing_symbol` tables via EF Core migration (`AddMarketDataPersistence`)
+- EF Core entities (`MarketDataRefreshRunEntity`, `MarketDataSnapshotEntity`, `MarketDataSnapshotQuoteEntity`, `MarketDataSnapshotMissingSymbolEntity`) with string-mapped enums, `DateOnly` trading dates, `decimal` prices, and getter-only navigation collection properties for immutability
+- Fluent `IEntityTypeConfiguration` classes enforcing snake_case table names, unique constraints (`refresh_run_id`, `snapshot_id + symbol + quote_date`, `snapshot_id + symbol`), cascade/restrict delete behaviors, and composite indexes
+- `AppDbContext` with `ApplyConfigurationsFromAssembly` and `DbSet` properties for all four entity types
+- `MarketDataSnapshotPersistenceService` implementing the full refresh persistence workflow: symbol normalization, quote deduplication, negative-price/volume validation, coverage enforcement (no symbol both persisted and missing), transactional snapshot writes, and best-effort run failure marking on rollback
+- `MarketDataSnapshotReadService` with `GetLivePriceHistory` (freshness-gated via `FreshUntilUtc`) and `GetHistoricalPriceHistory` (as-of-date ordered, no TTL rejection) returning `PriceBar[]` for downstream technical scoring
+- `LiveSnapshotMarketDataProvider` and `HistoricalSnapshotMarketDataProvider` implementing `IMarketDataProvider` via the read service
+- Request/result models (`PersistMarketDataRefreshRequest`, `PersistedMarketDataSymbol`, `PersistedMarketDataQuote`, `PersistedMarketDataMissingSymbol`, `MarketDataRefreshPersistenceResult`)
+- `MarketDataPersistenceLimits` centralizing max-length constants for trigger, provider, error, and detail fields
+- `DesignTime/AppDbContextFactory` for EF Core migration tooling
+- `appsettings.json` and `appsettings.Development.json` with PostgreSQL connection strings
+- NuGet dependencies: `Npgsql.EntityFrameworkCore.PostgreSQL` and `Microsoft.EntityFrameworkCore.Design`
+- `docker-compose.yml` PostgreSQL service (`postgres:16-alpine`) with health check, named volume (`pgdata`), and credentials
+- `app` service `depends_on: postgres: condition: service_healthy` and `ConnectionStrings__AppDb` environment variable override for Docker networking
+- Persistence DI registration (`AddPersistence`) with `PersistenceOptions`, `AppDbContext` using `UseNpgsql`, and `PostgreSqlHealthCheck`
+- DI registration wired into CLI composition root (`Program.cs`)
+
+**Validation:** `AppDbContextModelTests` verifying EF Core model snapshot consistency; `MarketDataSnapshotPersistenceServiceTests` covering full success, partial refresh, total failure, quote deduplication, coverage validation, negative-price rejection, and transactional rollback scenarios; `MarketDataSnapshotReadServiceTests` covering live freshness gating, historical as-of-date selection, missing-symbol exclusion, and empty-result paths; `PersistenceDependencyInjectionTests` verifying DI resolution. All 65 tests pass, solution builds with zero warnings.
+
+## Phase 11: Testcontainers Integration
+
+**Status: NOT STARTED**
+
+**Capabilities:** Real PostgreSQL integration testing via Testcontainers
+
 **What to build:**
-- A PostgreSQL schema for `market_data_refresh_run`, `market_data_snapshot`, `market_data_snapshot_quote`, and `market_data_snapshot_missing_symbol`
-- EF Core entities and `AppDbContext` configuration for immutable snapshot storage
-- A refresh workflow or worker path that persists one snapshot per refresh run
-- Snapshot freshness metadata and selection rules for live and historical reads
-- Explicit missing-symbol tracking so incomplete refreshes stay fail-safe instead of silently dropping symbols
+- `Testcontainers.PostgreSql` NuGet package added to `BlowingCandles.Infrastructure.Tests`
+- Shared xUnit collection fixture (`PostgresContainerFixture`) that starts a single `postgres:16-alpine` container per test run and applies the EF Core migration
+- Migration of `MarketDataSnapshotPersistenceServiceTests`, `MarketDataSnapshotReadServiceTests`, and `AppDbContextModelTests` from InMemory/hardcoded-localhost to the Testcontainers-managed PostgreSQL instance
+- `PersistenceDependencyInjectionTests` DI resolution test updated to use the Testcontainers connection string
+- Table truncation helper (`TRUNCATE ... CASCADE`) for per-test isolation
+- Removal of `Microsoft.EntityFrameworkCore.InMemory` package
 
-**Why tenth:** Daily bars are stable enough for end-of-day workflows, and Yahoo throttling makes per-run live retrieval operationally fragile. Introducing durable snapshot persistence is the foundation required before cache-first runtime reads or worker-driven refresh behavior can rely on PostgreSQL safely.
+**Why eleventh:** The persistence layer (Phase 10) is implemented with InMemory tests as a stopgap. InMemory does not enforce check constraints, unique indexes, cascade deletes, or PostgreSQL-specific type mappings. Testcontainers closes this gap by running the exact same migration against real PostgreSQL, validating the schema and service behavior together.
 
-**Validation:** Migrations apply successfully, refresh runs persist succeeded/partial/failed outcomes, snapshots store complete quote history plus missing-symbol rows, and stale or missing persisted data remains fail-safe.
+**Validation:** All existing persistence tests pass against real PostgreSQL. Migration applies successfully as part of fixture setup. Unique constraints, check constraints, and cascade deletes are exercised by the test suite. No InMemory provider usage remains.
 
-## Phase 11: REST API Endpoints
+## Phase 12: REST API Endpoints
 
 **Status: NOT STARTED**
 
@@ -191,7 +220,7 @@ This document describes the order in which major system capabilities should be i
 - JSON responses using plain enum serialisation (consistent with `signals.json`)
 - No authentication required (local/operator use)
 
-**Why eleventh:** All signal generation and market-data persistence workflows are complete. The API remains a thin read layer over existing pipeline output.
+**Why twelfth:** All signal generation and market-data persistence workflows are complete. The API remains a thin read layer over existing pipeline output.
 
 **Validation:** Integration tests verifying correct HTTP status codes, JSON response structure, and ticker filtering.
 
@@ -208,8 +237,11 @@ The following decisions should be made before or during the indicated phase:
 | JSON serializer | 3 ✅ | System.Text.Json |
 | State reset behavior | 4 ✅ | Uses `IClock` for day-reset; simulation uses `as_of` (accepted divergence from Python) |
 | Run Range architecture | 7 ✅ | In-process loop with shared state (no subprocesses) |
-| Yahoo Finance integration strategy | 9 | Deferred — offline seams are complete; live transport verification blocked on Phase 10 refresh worker |
+| Yahoo Finance integration strategy | 9 | Offline seams are complete; add mock-container contract tests before live transport verification against the future refresh workflow |
 | Sync-over-async pattern | 9 | Decided by the refresh worker's pipeline design; synchronous CLI reads shift to snapshots |
-| Yahoo verification gate | 9 | Required — refresh worker must produce a valid snapshot with real Yahoo data before the phase is closed |
-| Snapshot read policy | 10 | Live reads require a fresh snapshot; historical reads select the latest snapshot whose `as_of_date` is not newer than the requested simulation date |
+| Yahoo HTTP contract testing | 9 | Testcontainers-backed mock HTTP server should exercise the real transport without relying on live Yahoo |
+| Yahoo verification gate | 9 | Required — both the mock-container contract suite and a live refresh-workflow smoke validation must pass before the phase is closed |
+| Snapshot read policy | 10 | Live reads require a fresh snapshot (`FreshUntilUtc > now`); historical reads select the latest snapshot whose `as_of_date` is not newer than the requested simulation date |
 | Refresh persistence model | 10 | Persist immutable snapshots with explicit missing-symbol tracking; do not mutate prior snapshot rows in place |
+| PostgreSQL ORM | 10 | EF Core with Npgsql provider, fluent configuration, string-mapped enums |
+| Integration test infrastructure | 11 | Testcontainers with `postgres:16-alpine`, xUnit collection fixture, table truncation for isolation |

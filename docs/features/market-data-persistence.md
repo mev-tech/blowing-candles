@@ -6,7 +6,7 @@ market-data-persistence
 
 ## Status
 
-PLANNED. This replaces the earlier file-backed `market-data-cache` proposal.
+COMPLETED. EF Core entities, configurations, services, providers, migration, tests, docker-compose PostgreSQL service, DI registration (`AddPersistence`), health checks (`PostgreSqlHealthCheck`), and `PersistenceOptions` are all implemented. All 65 tests pass, solution builds with zero warnings.
 
 ## Summary
 
@@ -22,13 +22,19 @@ Persist market-data refresh output in PostgreSQL as immutable snapshots. Each re
 
 ## Acceptance Criteria
 
-- [ ] The schema defines `market_data_refresh_run`, `market_data_snapshot`, `market_data_snapshot_quote`, and `market_data_snapshot_missing_symbol`.
-- [ ] Each refresh run persists execution status separately from the snapshot data it produced.
-- [ ] Each snapshot is immutable and stores the full historical quote set needed by technical scoring for that refresh.
-- [ ] Snapshot freshness is explicit through TTL metadata stored with the snapshot.
-- [ ] Symbols missing from a refresh are tracked explicitly and never silently dropped.
-- [ ] The design supports live reads of the newest usable snapshot and historical reads for `run-asof`.
-- [ ] Missing, stale, partial, or failed refreshes still result in downstream `WAIT`, never a fabricated BUY or SELL.
+- [x] The schema defines `market_data_refresh_run`, `market_data_snapshot`, `market_data_snapshot_quote`, and `market_data_snapshot_missing_symbol`.
+- [x] Each refresh run persists execution status separately from the snapshot data it produced.
+- [x] Each snapshot is immutable and stores the full historical quote set needed by technical scoring for that refresh.
+- [x] Snapshot freshness is explicit through TTL metadata stored with the snapshot.
+- [x] Symbols missing from a refresh are tracked explicitly and never silently dropped.
+- [x] The design supports live reads of the newest usable snapshot and historical reads for `run-asof`.
+- [x] Missing, stale, partial, or failed refreshes still result in downstream `WAIT`, never a fabricated BUY or SELL.
+- [ ] `docker-compose.yml` includes a PostgreSQL service with health check, named volume, and correct credentials.
+- [ ] The `app` service in `docker-compose.yml` overrides `ConnectionStrings__AppDb` to reach the `postgres` service by hostname and depends on it with `service_healthy`.
+- [ ] `appsettings.json` connection string matches the docker-compose PostgreSQL defaults for zero-config local development.
+- [ ] EF Core migration can be applied against the running PostgreSQL container (`dotnet ef database update`).
+- [ ] Persistence DI registration (`AddPersistence`) is wired into the CLI composition root.
+- [ ] Existing CLI commands remain unaffected — all commands produce identical output when PostgreSQL is unavailable (graceful degradation or optional dependency).
 
 ## Inputs
 
@@ -540,10 +546,115 @@ await tx.CommitAsync(ct);
 - Invalid or duplicate bars: reject or deduplicate them before persistence rather than inserting ambiguous history.
 - Database failure during snapshot write: roll back the snapshot transaction and mark the run failed if possible.
 
+## 8. Remaining Infrastructure Work
+
+The EF Core persistence layer (entities, configurations, services, providers, migration, tests) is implemented. The following infrastructure prerequisites from `docs/features/postgres-persistence.md` are still required before this feature can be validated end-to-end.
+
+### 8.1 Docker Compose PostgreSQL Service
+
+The current `docker-compose.yml` has only the `app` service. It must be extended with a PostgreSQL service.
+
+Required changes to `docker-compose.yml`:
+
+```yaml
+services:
+  app:
+    build: .
+    image: blowing-candles
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - ConnectionStrings__AppDb=Host=postgres;Port=5432;Database=blowing_candles;Username=postgres;Password=postgres
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./earnings_calendar.json:/app/earnings_calendar.json:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: blowing_candles
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d blowing_candles"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:
+```
+
+Notes:
+
+- The `app` service overrides `ConnectionStrings__AppDb` via environment variable so it can reach the `postgres` service by hostname inside the Docker network.
+- The `depends_on` with `service_healthy` ensures PostgreSQL is ready before the app starts.
+- `postgres:16-alpine` is chosen for small image size and PostgreSQL 16 compatibility with Npgsql 8.x.
+- The named volume `pgdata` persists data across container restarts.
+- The database name `blowing_candles` must match the connection string in `appsettings.json`.
+
+### 8.2 Connection String Alignment
+
+The current `appsettings.json` contains:
+
+```json
+{
+  "ConnectionStrings": {
+    "AppDb": "Host=localhost;Port=5432;Database=blowing_candles;Username=postgres;Password=postgres"
+  }
+}
+```
+
+This is correct for local development (running the CLI outside Docker against the compose PostgreSQL service). The `ConnectionStrings__AppDb` environment variable in the `app` service overrides this to `Host=postgres` when running inside Docker.
+
+### 8.3 DI Registration in CLI Composition Root
+
+The persistence services (`MarketDataSnapshotPersistenceService`, `MarketDataSnapshotReadService`, `LiveSnapshotMarketDataProvider`, `HistoricalSnapshotMarketDataProvider`) are not yet wired into `Program.cs`. This requires:
+
+1. Loading `appsettings.json` via `ConfigurationBuilder` in `Program.cs`.
+2. Registering `AppDbContext` with `UseNpgsql` using the `AppDb` connection string.
+3. Registering or constructing persistence services so command handlers can use snapshot-backed providers.
+4. Ensuring existing commands that do not need PostgreSQL remain functional without a running database.
+
+### 8.4 Migration Application
+
+Once the PostgreSQL container is running, apply the existing migration:
+
+```bash
+docker compose up postgres -d
+
+dotnet ef database update \
+  --project src/BlowingCandles.Infrastructure/BlowingCandles.Infrastructure.csproj \
+  --startup-project src/BlowingCandles.Cli/BlowingCandles.Cli.csproj
+```
+
+Verify:
+
+1. The four `market_data_*` tables exist.
+2. `__EFMigrationsHistory` contains one row for `AddMarketDataPersistence`.
+3. All unique constraints and indexes are present.
+
+### 8.5 End-to-End Validation
+
+After infrastructure is wired:
+
+1. Start PostgreSQL: `docker compose up postgres -d`
+2. Apply migration: `dotnet ef database update ...`
+3. Run existing CLI commands (`check-calendar`, `run-asof`, etc.) and verify identical output — PostgreSQL availability must not break existing behavior.
+4. Manually or programmatically persist a test snapshot using `MarketDataSnapshotPersistenceService`.
+5. Read it back via `MarketDataSnapshotReadService` and verify price bars match input.
+
 ## Dependencies
 
-- `docs/features/postgres-persistence.md`
-- `AppDbContext` and EF Core migration support
+- `docs/features/postgres-persistence.md` — docker-compose PostgreSQL service, DI registration, health checks (partially implemented)
+- `AppDbContext` and EF Core migration support (implemented)
 - Market-data refresh worker or CLI command
 - Existing Yahoo Finance adapter or a future `IMarketDataProvider` implementation
 

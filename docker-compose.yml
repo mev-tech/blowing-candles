@@ -2,8 +2,32 @@ services:
   app:
     build: .
     image: blowing-candles
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - ConnectionStrings__AppDb=Host=postgres;Port=5432;Database=blowing_candles;Username=postgres;Password=postgres
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ./earnings_calendar.json:/app/earnings_calendar.json:ro
       - ./data:/app/data
       - ./logs:/app/logs
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: blowing_candles
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d blowing_candles"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:

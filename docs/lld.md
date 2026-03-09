@@ -1,6 +1,6 @@
 # Low-Level Design
 
-> Living document. Updated as each implementation phase lands. Current state reflects through **Phase 8 (Finalization)**. **Phase 9 (Yahoo Finance Adapter)** is deferred until after Phase 10/11 — offline seams and tests are complete; live transport verification requires the refresh worker.
+> Living document. Updated as each implementation phase lands. Current state reflects through **Phase 8 (Finalization)**. **Phase 9 (Yahoo Finance Adapter)** is deferred — offline seams and tests are complete, but a mock-container contract suite and later live transport verification are still required for the future refresh workflow.
 
 ## Class Catalog
 
@@ -292,7 +292,7 @@ Constructor()  // public adapter entry point; may compose internal Yahoo transpo
 | `GetDailyPriceHistory` | `IReadOnlyList<PriceBar> GetDailyPriceHistory(string ticker, DateOnly asOfDate)` | Fetches about 365 days of daily OHLCV via a verified Yahoo integration path, clamps invalid future boundaries, normalizes timestamps deliberately, and returns `PriceBar[]` ordered by date. |
 | `GetNextEarningsDate` | `DateTimeOffset? GetNextEarningsDate(string ticker, DateTimeOffset asOfUtc)` | Queries Yahoo for the next future earnings date when the local calendar lacks the ticker. Returns null only when Yahoo has no usable date. |
 
-Status: **Deferred** — offline seams and tests are complete; live Yahoo HTTP transport verification is blocked on Phase 10 (refresh worker). Runtime reads will use persisted snapshots.
+Status: **Deferred** — offline seams and tests are complete; the next step is a Testcontainers-backed mock HTTP contract suite, and live Yahoo HTTP verification still depends on the future refresh workflow. Runtime reads will use persisted snapshots.
 
 ---
 
@@ -457,7 +457,7 @@ Program.Main
 | 6 — Technical Scoring | SMA50, SMA200, RSI14 (SMA-based), composite scoring | Done |
 | 7 — Command Orchestration | Wire full pipeline, `run-asof`, `run-realtime`, `run-range` | Done |
 | 8 — Finalization | Dockerfile, cross-validation against Python | Done |
-| 9 — Yahoo Finance Adapter | Verified live Yahoo transport for the refresh worker | Deferred (blocked on 10/11) |
+| 9 — Yahoo Finance Adapter | Mock-container Yahoo contract tests plus verified live Yahoo transport for the refresh workflow | Deferred |
 | 10 — Market Data Persistence | PostgreSQL refresh runs, immutable snapshots, historical quote rows, missing-symbol tracking, and snapshot freshness metadata | Planned |
 
 ## Design Decisions Log
@@ -472,6 +472,6 @@ Program.Main
 | Prefixed enums in audit, plain in JSON output | Matches Python output format for behavioral parity |
 | State uses `IClock` for day-reset | Accepted divergence from Python (which uses wall-clock even in simulation) |
 | Path resolution relative to config file | Allows config to be in any directory without CWD dependency |
-| Yahoo integration strategy deferred | Offline adapter seams are complete; live transport verification blocked on the Phase 10 refresh worker |
+| Yahoo integration strategy deferred | Offline adapter seams are complete; add mock-container contract tests before live transport verification against the future refresh workflow |
 | Fresh snapshot-backed market data is acceptable for runtime | End-of-day signals only require the latest completed daily close; persisted refresh snapshots reduce provider throttling risk |
 | Immutable snapshot persistence is the primary refresh model | Refreshes should write a new snapshot with explicit missing-symbol tracking instead of mutating prior market-data rows in place |

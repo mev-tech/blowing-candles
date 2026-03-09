@@ -4,6 +4,9 @@ using BlowingCandles.Cli.Handlers;
 using BlowingCandles.Domain.Services;
 using BlowingCandles.Infrastructure.Clock;
 using BlowingCandles.Infrastructure.Config;
+using BlowingCandles.Infrastructure.Persistence;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace BlowingCandles.Cli;
 
@@ -13,6 +16,20 @@ internal static class Program
 
     public static int Main(string[] args)
     {
+        var configuration = BuildInfrastructureConfiguration();
+        var services = new ServiceCollection();
+
+        try
+        {
+            services.AddPersistence(configuration);
+        }
+        catch (InvalidOperationException exception) when (IsMissingAppDbConnectionString(exception))
+        {
+            // Existing commands are still file-backed; missing DB config should not block them.
+        }
+
+        using var serviceProvider = services.BuildServiceProvider();
+
         var configLoader = new YamlConfigLoader();
         var outputRenderer = new OutputRenderer();
 
@@ -49,6 +66,23 @@ internal static class Program
             Console.Error.WriteLine($"Unhandled error: {exception.Message}");
             return 1;
         }
+    }
+
+    private static IConfiguration BuildInfrastructureConfiguration()
+    {
+        return new ConfigurationBuilder()
+            .SetBasePath(Directory.GetCurrentDirectory())
+            .AddJsonFile("appsettings.json", optional: true)
+            .AddJsonFile("appsettings.Development.json", optional: true)
+            .AddJsonFile(Path.Combine("src", "BlowingCandles.Cli", "appsettings.json"), optional: true)
+            .AddJsonFile(Path.Combine("src", "BlowingCandles.Cli", "appsettings.Development.json"), optional: true)
+            .AddEnvironmentVariables()
+            .Build();
+    }
+
+    private static bool IsMissingAppDbConnectionString(InvalidOperationException exception)
+    {
+        return exception.Message.Contains("Connection string 'AppDb' is missing", StringComparison.Ordinal);
     }
 
     private static bool IsHelp(string arg)

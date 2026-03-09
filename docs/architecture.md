@@ -9,7 +9,7 @@ The system follows a pipeline architecture: configuration flows in, three domain
 The codebase is organized into four projects following a simplified layered architecture:
 
 - **Domain** — enums, signal models, computation logic, service interfaces
-- **Infrastructure** — file I/O, Yahoo Finance adapter, config parsing
+- **Infrastructure** — file I/O, Yahoo Finance adapter, config parsing, PostgreSQL persistence
 - **Application** — pipeline orchestration, output rendering
 - **CLI** — entry point, command parsing, dependency wiring
 
@@ -17,13 +17,15 @@ The codebase is organized into four projects following a simplified layered arch
 flowchart TD
     CLI["CLI\nProgram.cs, Handlers"]
     APP["Application\nSignalPipeline, OutputRenderer"]
-    INFRA["Infrastructure\nYamlConfigLoader, JsonStateStore,\nJsonlAuditWriter, EarningsCalendarFile,\nYahooFinanceAdapter"]
+    INFRA["Infrastructure\nYamlConfigLoader, JsonStateStore,\nJsonlAuditWriter, EarningsCalendarFile,\nYahooFinanceAdapter, Persistence"]
+    DB[("PostgreSQL\nmarket_data_*")]
     DOMAIN["Domain\nEarningsGate, TechnicalScorer,\nTradeGovernor, Models, Interfaces"]
 
     CLI --> APP
     CLI --> INFRA
     APP --> DOMAIN
     INFRA -.->|implements| DOMAIN
+    INFRA --> DB
 ```
 
 ## Architectural Goals
@@ -89,6 +91,13 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 - `JsonlAuditReader` — reads and parses JSONL audit files for stats-periods analysis.
 - `EarningsCalendarFile` — implements `IEarningsCalendar` by loading `earnings_calendar.json`.
 - `YahooFinanceAdapter` — implements `IMarketDataProvider` via a verified Yahoo integration path. Retrieves up to 365 days of daily OHLCV for technical scoring and next earnings dates for fallback use when the local calendar lacks a ticker. The adapter owns provider-specific request shaping, boundary clamping, timestamp normalization, and exception propagation. The exact Yahoo library or HTTP strategy is an implementation detail until live verification passes.
+- `AppDbContext` — EF Core `DbContext` for PostgreSQL with fluent configuration, snake_case table naming, and string-mapped enums. Manages `MarketDataRefreshRuns`, `MarketDataSnapshots`, `MarketDataSnapshotQuotes`, and `MarketDataSnapshotMissingSymbols`.
+- `MarketDataSnapshotPersistenceService` — persists immutable market-data snapshots from refresh runs. Handles symbol normalization, quote deduplication, coverage validation, transactional writes, and best-effort failure marking.
+- `MarketDataSnapshotReadService` — reads price history from persisted snapshots. Supports live reads (freshness-gated via `FreshUntilUtc`) and historical reads (as-of-date ordered without TTL rejection).
+- `LiveSnapshotMarketDataProvider` / `HistoricalSnapshotMarketDataProvider` — implement `IMarketDataProvider` by reading from persisted snapshots via the read service.
+- `DependencyInjection.AddPersistence` — registers `AppDbContext` with `UseNpgsql`, binds `PersistenceOptions` from configuration, and adds the `PostgreSqlHealthCheck`.
+- `PersistenceOptions` — configuration options for command timeout, detailed errors, and sensitive data logging.
+- `PostgreSqlHealthCheck` — implements `IHealthCheck` to verify database connectivity.
 
 ### Application Layer
 
@@ -106,8 +115,13 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 flowchart TD
     CONFIG["config.yaml"] --> CLI["CLI Handler"]
     CALENDAR["earnings_calendar.json"] --> EG
-    YAHOO_E["Yahoo Finance\n(earnings fallback)"] -.-> EG
-    YAHOO_P["Yahoo Finance\n(daily prices)"] --> TS
+    YAHOO_E["Yahoo Finance<br>(earnings fallback)"] -.-> EG
+    YAHOO_P["Yahoo Finance\n(daily prices)"] -.-> REFRESH["Refresh Worker"]
+    REFRESH --> PERSIST["SnapshotPersistenceService"]
+    PERSIST --> PG[("PostgreSQL\nmarket_data_*")]
+    PG --> READ["SnapshotReadService"]
+    READ --> PROVIDER["Snapshot MarketDataProvider"]
+    PROVIDER --> TS
 
     CLI --> EG["EarningsGate.Check\n(watchlist, clock)"]
     CLI --> TS["TechnicalScorer.Score\n(watchlist, clock)"]
@@ -275,13 +289,48 @@ BlowingCandles/
 │   │   │   └── AuditReadResult.cs
 │   │   ├── Calendar/
 │   │   │   └── EarningsCalendarFile.cs
-│   │   └── MarketData/
-│   │       └── YahooFinanceAdapter.cs
+│   │   ├── MarketData/
+│   │   │   └── YahooFinanceAdapter.cs
+│   │   └── Persistence/
+│   │       ├── AppDbContext.cs
+│   │       ├── DependencyInjection.cs
+│   │       ├── MarketDataPersistenceLimits.cs
+│   │       ├── Entities/
+│   │       │   ├── MarketDataRefreshRunEntity.cs
+│   │       │   ├── MarketDataRefreshRunStatus.cs
+│   │       │   ├── MarketDataSnapshotEntity.cs
+│   │       │   ├── MarketDataSnapshotStatus.cs
+│   │       │   ├── MarketDataSnapshotQuoteEntity.cs
+│   │       │   ├── MarketDataSnapshotMissingSymbolEntity.cs
+│   │       │   └── MarketDataMissingSymbolReason.cs
+│   │       ├── Configurations/
+│   │       │   ├── MarketDataRefreshRunConfiguration.cs
+│   │       │   ├── MarketDataSnapshotConfiguration.cs
+│   │       │   ├── MarketDataSnapshotQuoteConfiguration.cs
+│   │       │   └── MarketDataSnapshotMissingSymbolConfiguration.cs
+│   │       ├── HealthChecks/
+│   │       │   └── PostgreSqlHealthCheck.cs
+│   │       ├── Models/
+│   │       │   └── MarketDataRefreshModels.cs
+│   │       ├── Options/
+│   │       │   └── PersistenceOptions.cs
+│   │       ├── Services/
+│   │       │   ├── MarketDataSnapshotPersistenceService.cs
+│   │       │   └── MarketDataSnapshotReadService.cs
+│   │       ├── Providers/
+│   │       │   ├── LiveSnapshotMarketDataProvider.cs
+│   │       │   └── HistoricalSnapshotMarketDataProvider.cs
+│   │       ├── DesignTime/
+│   │       │   └── AppDbContextFactory.cs
+│   │       └── Migrations/
+│   │           └── AddMarketDataPersistence.cs
 │   ├── BlowingCandles.Application/
 │   │   ├── SignalPipeline.cs
 │   │   └── OutputRenderer.cs
 │   └── BlowingCandles.Cli/
 │       ├── Program.cs
+│       ├── appsettings.json
+│       ├── appsettings.Development.json
 │       └── Handlers/
 │           ├── CheckCalendarHandler.cs
 │           ├── StatsPeriodsHandler.cs
@@ -303,6 +352,7 @@ BlowingCandles/
 │           ├── all-wait/
 │           └── empty-watchlist/
 ├── config.yaml
+├── docker-compose.yml
 ├── earnings_calendar.json
 ├── .dockerignore
 ├── docker-entrypoint.sh
@@ -359,15 +409,27 @@ Dockerfile, operational documentation, final cross-validation against Python out
 
 ### Phase 9: Yahoo Finance Adapter — Live Transport Verification
 
-Deferred until after Phase 10 and 11. The adapter's offline seams (request factory, transport interface, response parser) and 12 offline tests are complete. Live Yahoo HTTP verification is only meaningful once the refresh worker exists to consume the adapter and persist snapshots. Runtime signal reads will use persisted snapshots, not synchronous Yahoo calls.
+Deferred. The adapter's offline seams (request factory, transport interface, response parser) and 12 offline tests are complete. The next missing step is a Testcontainers-backed mock HTTP contract suite that exercises the real transport against a Yahoo-shaped server. Phase closure still requires live Yahoo verification once the refresh workflow exists to consume the adapter and persist snapshots. Runtime signal reads will use persisted snapshots, not synchronous Yahoo calls.
 
-**Deliverables:** Verified live transport for the refresh worker, async transport support if needed, and a network-enabled smoke validation proving the refresh worker persists a valid snapshot with real Yahoo data.
+**Deliverables:** Mock-container contract tests for the real HTTP transport, verified live transport for the refresh workflow, async transport support if needed, and a network-enabled smoke validation proving the refresh workflow persists a valid snapshot with real Yahoo data.
 
 ### Phase 10: Market Data Persistence
 
-Add PostgreSQL-backed market-data persistence so refresh work produces immutable snapshots instead of relying on a file-backed cache. Each refresh should record run metadata, one durable snapshot, per-symbol historical quote rows, missing-symbol rows, and snapshot freshness metadata. This phase establishes the storage model that later runtime reads can consume while preserving the fail-safe rule that stale or missing data resolves to WAIT.
+PostgreSQL-backed immutable snapshot persistence for market-data refresh output. EF Core entities, fluent configurations with snake_case table naming, persistence and read services, snapshot-backed `IMarketDataProvider` implementations, EF Core migration, docker-compose PostgreSQL service, DI registration, health checks, and configuration options.
 
-**Deliverables:** `market_data_refresh_run`, `market_data_snapshot`, `market_data_snapshot_quote`, and `market_data_snapshot_missing_symbol` tables; EF Core entities and configuration; migration support; snapshot freshness rules; and tests covering successful, partial, and failed refresh persistence.
+**Deliverables:** Four tables (`market_data_refresh_run`, `market_data_snapshot`, `market_data_snapshot_quote`, `market_data_snapshot_missing_symbol`); `MarketDataSnapshotPersistenceService` and `MarketDataSnapshotReadService`; `LiveSnapshotMarketDataProvider` and `HistoricalSnapshotMarketDataProvider`; `AddPersistence` DI registration with `PersistenceOptions` and `PostgreSqlHealthCheck`; docker-compose PostgreSQL service with health check and named volume; tests covering successful, partial, and failed refresh persistence plus live/historical read paths.
+
+### Phase 11: Testcontainers Integration
+
+Replace InMemory and hardcoded-localhost database tests with Testcontainers for PostgreSQL. A shared xUnit collection fixture starts one `postgres:16-alpine` container per test run, applies the EF Core migration, and provides isolated `AppDbContext` instances to all persistence tests. Validates real PostgreSQL behavior (check constraints, unique indexes, cascade deletes, type mappings) that InMemory cannot enforce.
+
+**Deliverables:** `PostgresContainerFixture` with migration and table truncation; all persistence service, read service, model, and DI tests running against real PostgreSQL; `Microsoft.EntityFrameworkCore.InMemory` package removed.
+
+### Phase 12: REST API Endpoints
+
+Minimal ASP.NET Core Web API for signal retrieval over HTTP. Thin read layer over existing pipeline output.
+
+**Deliverables:** `GET /api/signals` and `GET /api/signals/{ticker}` endpoints with integration tests.
 
 ## Codex Starting Brief
 
@@ -380,6 +442,8 @@ Add PostgreSQL-backed market-data persistence so refresh work produces immutable
 - **Direct Yahoo Finance HTTP integration** — current adapter path for daily prices and earnings fallback; final acceptance still depends on live smoke validation
 - **System.CommandLine** — CLI argument parsing
 - **Microsoft.Extensions.Logging** — structured console logging
+- **Npgsql.EntityFrameworkCore.PostgreSQL** — EF Core provider for PostgreSQL market-data persistence
+- **Testcontainers.PostgreSql** — ephemeral PostgreSQL containers for integration tests (test-only dependency)
 
 ### Key Constraints
 
@@ -394,9 +458,9 @@ Add PostgreSQL-backed market-data persistence so refresh work produces immutable
 ### What Not to Build
 
 - No API server, no HTTP endpoints
-- No database, no message queue
+- No message queue
 - No retry logic for Yahoo Finance
-- No caching layer
+- No in-memory caching layer (market-data reads come from PostgreSQL snapshots)
 - No dependency injection container
 - No `valid_until` field on NewsSignal
 - No production code paths for MANAGE, EXIT_RECOMMENDED, EXIT_NOW actions
