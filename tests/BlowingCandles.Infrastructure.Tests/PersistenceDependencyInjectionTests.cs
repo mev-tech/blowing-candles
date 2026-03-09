@@ -1,6 +1,7 @@
 using BlowingCandles.Infrastructure.Persistence;
 using BlowingCandles.Infrastructure.Persistence.HealthChecks;
 using BlowingCandles.Infrastructure.Persistence.Options;
+using BlowingCandles.Infrastructure.Persistence.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -61,7 +62,7 @@ public sealed class PersistenceDependencyInjectionPostgresTests
     }
 
     [Fact]
-    public async Task AddPersistence_ValidConnectionString_ResolvesAppDbContext()
+    public async Task AddPersistence_ValidConnectionString_ResolvesPersistenceServices()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
@@ -81,9 +82,15 @@ public sealed class PersistenceDependencyInjectionPostgresTests
         using var scope = serviceProvider.CreateScope();
 
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var signalRunPersistenceService = scope.ServiceProvider.GetRequiredService<SignalRunPersistenceService>();
+        var signalRunReadService = scope.ServiceProvider.GetRequiredService<SignalRunReadService>();
+        var stateStoreFactory = scope.ServiceProvider.GetRequiredService<TradeGovernorDbStateStoreFactory>();
         var options = scope.ServiceProvider.GetRequiredService<IOptions<PersistenceOptions>>().Value;
 
         Assert.NotNull(dbContext);
+        Assert.NotNull(signalRunPersistenceService);
+        Assert.NotNull(signalRunReadService);
+        Assert.NotNull(stateStoreFactory.Create("live"));
         Assert.Equal("Npgsql.EntityFrameworkCore.PostgreSQL", dbContext.Database.ProviderName);
         Assert.True(await dbContext.Database.CanConnectAsync());
         Assert.Equal(45, options.CommandTimeoutSeconds);

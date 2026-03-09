@@ -1,7 +1,9 @@
 using System.Data.Common;
+using BlowingCandles.Domain.Enums;
 using BlowingCandles.Infrastructure.Persistence;
 using BlowingCandles.Infrastructure.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
+using TradingAction = BlowingCandles.Domain.Enums.Action;
 
 namespace BlowingCandles.Infrastructure.Tests;
 
@@ -34,6 +36,9 @@ public sealed class AppDbContextModelTests
         Assert.Contains("market_data_snapshot", tableNames);
         Assert.Contains("market_data_snapshot_quote", tableNames);
         Assert.Contains("market_data_snapshot_missing_symbol", tableNames);
+        Assert.Contains("signal_run", tableNames);
+        Assert.Contains("signal_run_result", tableNames);
+        Assert.Contains("trade_governor_state", tableNames);
 
         var migrationHistoryCount = await ExecuteScalarAsync(
             dbContext,
@@ -42,7 +47,7 @@ public sealed class AppDbContextModelTests
             FROM "__EFMigrationsHistory"
             """);
 
-        Assert.Equal(1, migrationHistoryCount);
+        Assert.Equal(2, migrationHistoryCount);
     }
 
     [Fact]
@@ -61,7 +66,10 @@ public sealed class AppDbContextModelTests
                 'market_data_refresh_run',
                 'market_data_snapshot',
                 'market_data_snapshot_quote',
-                'market_data_snapshot_missing_symbol')
+                'market_data_snapshot_missing_symbol',
+                'signal_run',
+                'signal_run_result',
+                'trade_governor_state')
             """);
         var constraintNames = await QueryStringSetAsync(
             dbContext,
@@ -71,13 +79,18 @@ public sealed class AppDbContextModelTests
             WHERE conrelid IN (
                 'market_data_refresh_run'::regclass,
                 'market_data_snapshot'::regclass,
-                'market_data_snapshot_quote'::regclass)
+                'market_data_snapshot_quote'::regclass,
+                'signal_run'::regclass,
+                'trade_governor_state'::regclass)
             """);
 
         Assert.Contains("market_data_refresh_run", tableNames);
         Assert.Contains("market_data_snapshot", tableNames);
         Assert.Contains("market_data_snapshot_quote", tableNames);
         Assert.Contains("market_data_snapshot_missing_symbol", tableNames);
+        Assert.Contains("signal_run", tableNames);
+        Assert.Contains("signal_run_result", tableNames);
+        Assert.Contains("trade_governor_state", tableNames);
         Assert.Contains(
             "ck_market_data_refresh_run_requested_symbol_count_non_negative",
             constraintNames);
@@ -86,6 +99,12 @@ public sealed class AppDbContextModelTests
             constraintNames);
         Assert.Contains(
             "ck_market_data_snapshot_quote_volume_non_negative",
+            constraintNames);
+        Assert.Contains(
+            "ck_signal_run_ticker_count_non_negative",
+            constraintNames);
+        Assert.Contains(
+            "ck_trade_governor_state_buys_today_non_negative",
             constraintNames);
     }
 
@@ -105,7 +124,9 @@ public sealed class AppDbContextModelTests
             AND index_info.indrelid IN (
                 'market_data_snapshot'::regclass,
                 'market_data_snapshot_quote'::regclass,
-                'market_data_snapshot_missing_symbol'::regclass)
+                'market_data_snapshot_missing_symbol'::regclass,
+                'signal_run_result'::regclass,
+                'trade_governor_state'::regclass)
             """);
 
         Assert.Contains("ix_market_data_snapshot_refresh_run_id", uniqueIndexNames);
@@ -115,6 +136,8 @@ public sealed class AppDbContextModelTests
         Assert.Contains(
             "ix_market_data_snapshot_missing_symbol_snapshot_id_symbol",
             uniqueIndexNames);
+        Assert.Contains("ix_signal_run_result_run_id_ticker", uniqueIndexNames);
+        Assert.Contains("ix_trade_governor_state_mode", uniqueIndexNames);
     }
 
     [Fact]
@@ -173,6 +196,90 @@ public sealed class AppDbContextModelTests
         dbContext.MarketDataSnapshots.Add(snapshot);
 
         await Assert.ThrowsAsync<DbUpdateException>(() => dbContext.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task Database_RejectsNegativeSignalRunTickerCountViaCheckConstraint()
+    {
+        await _fixture.ResetAsync();
+        await using var dbContext = _fixture.CreateDbContext();
+
+        dbContext.SignalRuns.Add(
+            new SignalRunEntity
+            {
+                RunType = SignalRunType.Realtime,
+                Trigger = "cli",
+                Status = SignalRunStatus.Completed,
+                AsOfDate = new DateOnly(2026, 3, 8),
+                IsSimulation = false,
+                TickerCount = -1,
+                StartedAtUtc = new DateTimeOffset(2026, 3, 8, 20, 0, 0, TimeSpan.Zero),
+                CompletedAtUtc = new DateTimeOffset(2026, 3, 8, 20, 1, 0, TimeSpan.Zero)
+            });
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => dbContext.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task Database_RejectsDuplicateSignalRunResultRowsViaUniqueIndex()
+    {
+        await _fixture.ResetAsync();
+        await using var dbContext = _fixture.CreateDbContext();
+        var run = CreateSignalRun(new DateOnly(2026, 3, 8), false);
+
+        run.Results.Add(CreateSignalRunResult(run, "AAPL"));
+        run.Results.Add(CreateSignalRunResult(run, "AAPL"));
+        dbContext.SignalRuns.Add(run);
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => dbContext.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task DeletingSignalRun_CascadesToResultRows()
+    {
+        await _fixture.ResetAsync();
+        await using var dbContext = _fixture.CreateDbContext();
+        var run = CreateSignalRun(new DateOnly(2026, 3, 8), false);
+        run.Results.Add(CreateSignalRunResult(run, "AAPL"));
+        dbContext.SignalRuns.Add(run);
+        await dbContext.SaveChangesAsync();
+
+        var runId = run.Id;
+
+        dbContext.SignalRuns.Remove(run);
+        await dbContext.SaveChangesAsync();
+
+        await using var verificationContext = _fixture.CreateDbContext();
+
+        Assert.False(await verificationContext.SignalRuns.AnyAsync(x => x.Id == runId));
+        Assert.False(await verificationContext.SignalRunResults.AnyAsync(x => x.RunId == runId));
+    }
+
+    [Fact]
+    public async Task Enums_AreStoredAsStringsInSignalRunTables()
+    {
+        await _fixture.ResetAsync();
+        await using var dbContext = _fixture.CreateDbContext();
+        var run = CreateSignalRun(new DateOnly(2026, 3, 8), false);
+        run.Status = SignalRunStatus.Completed;
+        run.Results.Add(CreateSignalRunResult(run, "AAPL"));
+        dbContext.SignalRuns.Add(run);
+        await dbContext.SaveChangesAsync();
+
+        var values = await QueryStringRowAsync(
+            dbContext,
+            """
+            SELECT run.status, run.run_type, result.action, result.news_state, result.market_action
+            FROM signal_run AS run
+            JOIN signal_run_result AS result ON result.run_id = run.id
+            WHERE run.id = 1
+            """);
+
+        Assert.Equal("Completed", values[0]);
+        Assert.Equal("Realtime", values[1]);
+        Assert.Equal("BUY", values[2]);
+        Assert.Equal("TRADE_OK", values[3]);
+        Assert.Equal("BUY", values[4]);
     }
 
     [Fact]
@@ -239,6 +346,18 @@ public sealed class AppDbContextModelTests
         var result = await command.ExecuteScalarAsync();
 
         return Convert.ToInt32(result);
+    }
+
+    private static async Task<string[]> QueryStringRowAsync(AppDbContext dbContext, string sql)
+    {
+        await using var command = CreateCommand(dbContext, sql);
+        await using var reader = await command.ExecuteReaderAsync();
+
+        Assert.True(await reader.ReadAsync());
+
+        return Enumerable.Range(0, reader.FieldCount)
+            .Select(reader.GetString)
+            .ToArray();
     }
 
     private static DbCommand CreateCommand(AppDbContext dbContext, string sql)
@@ -337,6 +456,35 @@ public sealed class AppDbContextModelTests
             Reason = MarketDataMissingSymbolReason.EmptySeries,
             Detail = "no rows",
             IsRetryable = true
+        };
+    }
+
+    private static SignalRunEntity CreateSignalRun(DateOnly asOfDate, bool isSimulation)
+    {
+        return new SignalRunEntity
+        {
+            RunType = isSimulation ? SignalRunType.AsOf : SignalRunType.Realtime,
+            Trigger = "cli",
+            Status = SignalRunStatus.Completed,
+            AsOfDate = asOfDate,
+            IsSimulation = isSimulation,
+            TickerCount = 1,
+            StartedAtUtc = new DateTimeOffset(asOfDate.ToDateTime(new TimeOnly(20, 0), DateTimeKind.Utc)),
+            CompletedAtUtc = new DateTimeOffset(asOfDate.ToDateTime(new TimeOnly(20, 1), DateTimeKind.Utc))
+        };
+    }
+
+    private static SignalRunResultEntity CreateSignalRunResult(SignalRunEntity run, string ticker)
+    {
+        return new SignalRunResultEntity
+        {
+            Run = run,
+            Ticker = ticker,
+            Action = TradingAction.BUY,
+            NewsState = NewsState.TRADE_OK,
+            MarketAction = TradingAction.BUY,
+            Reason = string.Empty,
+            Timestamp = run.CompletedAtUtc ?? run.StartedAtUtc
         };
     }
 }

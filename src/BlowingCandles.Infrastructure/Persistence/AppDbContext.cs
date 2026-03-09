@@ -19,6 +19,12 @@ public sealed class AppDbContext : DbContext
     public DbSet<MarketDataSnapshotMissingSymbolEntity> MarketDataSnapshotMissingSymbols =>
         Set<MarketDataSnapshotMissingSymbolEntity>();
 
+    public DbSet<SignalRunEntity> SignalRuns => Set<SignalRunEntity>();
+
+    public DbSet<SignalRunResultEntity> SignalRunResults => Set<SignalRunResultEntity>();
+
+    public DbSet<TradeGovernorStateEntity> TradeGovernorStates => Set<TradeGovernorStateEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);

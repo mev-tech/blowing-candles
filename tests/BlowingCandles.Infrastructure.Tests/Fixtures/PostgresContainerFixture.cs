@@ -41,7 +41,7 @@ public sealed class PostgresContainerFixture : IAsyncLifetime
     {
         await using var dbContext = CreateDbContext();
         await dbContext.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE market_data_refresh_run RESTART IDENTITY CASCADE");
+            "TRUNCATE TABLE signal_run, trade_governor_state, market_data_refresh_run RESTART IDENTITY CASCADE");
     }
 }
 

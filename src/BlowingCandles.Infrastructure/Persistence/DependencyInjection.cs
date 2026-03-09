@@ -1,5 +1,6 @@
 using BlowingCandles.Infrastructure.Persistence.HealthChecks;
 using BlowingCandles.Infrastructure.Persistence.Options;
+using BlowingCandles.Infrastructure.Persistence.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -47,6 +48,10 @@ public static class DependencyInjection
             .AddCheck<PostgreSqlHealthCheck>(
                 "postgresql",
                 tags: ["ready", "db"]);
+
+        services.AddScoped<SignalRunPersistenceService>();
+        services.AddScoped<SignalRunReadService>();
+        services.AddScoped<TradeGovernorDbStateStoreFactory>();
 
         return services;
     }

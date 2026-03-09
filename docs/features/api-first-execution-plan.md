@@ -120,12 +120,12 @@ Add PostgreSQL tables for persisting signal pipeline results. This is the founda
 |-------|---------|
 | `signal_run` | One row per pipeline execution. Tracks run type (realtime/asof/range), trigger (api/worker), status, timestamps, as-of date for simulations. |
 | `signal_run_result` | One row per ticker per run. Stores `FinalSignal` fields: ticker, action, news_state, market_action, reason, timestamp. FK to `signal_run`. |
-| `signal_run_audit` | One row per audit entry per run. Replaces JSONL audit log. FK to `signal_run`. |
+| `signal_run_audit` | **Deferred.** Audit entries continue to be written to `decisions.jsonl`. DB-backed audit logging will be added as a separate additive migration in a future step. |
 | `trade_governor_state` | Replaces `state.json`. Stores day, buys_today, last_buy_at. Separate rows for live vs simulation. |
 
 **Deliverables:**
 - EF Core entities, configurations, and migration
-- `SignalRunPersistenceService` — write a complete run with results and audit entries in one transaction
+- `SignalRunPersistenceService` — write a complete run with persisted signal results and trade governor state
 - `SignalRunReadService` — query latest run, run by ID, latest signals per ticker
 - `TradeGovernorDbStateStore` implementing `ITradeGovernorStateStore` backed by PostgreSQL
 - Testcontainers integration tests for all persistence operations
@@ -141,7 +141,7 @@ Extract orchestration from `RunCommandSupport.cs` and the CLI handlers into a re
 - Load config, select clock, resolve paths
 - Execute `SignalPipeline`
 - Persist results via `SignalRunPersistenceService` (replaces file writes)
-- Write audit entries via `SignalRunPersistenceService` (replaces JSONL append)
+- Continue writing audit entries to JSONL; DB-backed audit persistence remains deferred to a later additive step
 - Update trade governor state via `TradeGovernorDbStateStore` (replaces `state.json`)
 - Return a structured `SignalRunResult` with run ID, signals, and metadata
 

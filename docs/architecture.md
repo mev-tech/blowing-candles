@@ -20,7 +20,7 @@ flowchart TD
     API["Api\nApiHost, SignalsFileReader"]
     APP["Application\nSignalPipeline, OutputRenderer,\nSignalsJsonSerializer"]
     INFRA["Infrastructure\nYamlConfigLoader, JsonStateStore,\nJsonlAuditWriter, EarningsCalendarFile,\nYahooFinanceAdapter, Persistence"]
-    DB[("PostgreSQL\nmarket_data_*")]
+    DB[("PostgreSQL\nmarket_data_*, signal_run*,\ntrade_governor_state")]
     DOMAIN["Domain\nEarningsGate, TechnicalScorer,\nTradeGovernor, Models, Interfaces"]
 
     CLI --> APP
@@ -79,7 +79,7 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 - `IEarningsCalendar` — load and query earnings dates from the local calendar.
 - `IMarketDataProvider` — retrieve daily OHLCV price history for a ticker.
 - `IClock` — provides current UTC time; injectable for deterministic testing and as-of simulation.
-- `ITradeGovernorStateStore` — load and save trade governor state (buy count, last buy timestamp). Implemented by `JsonStateStore`.
+- `ITradeGovernorStateStore` — load and save trade governor state (buy count, last buy timestamp). Implemented by `JsonStateStore` (file-backed) and `TradeGovernorDbStateStore` (PostgreSQL-backed).
 
 **Domain Services**
 
@@ -95,11 +95,15 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 - `JsonlAuditReader` — reads and parses JSONL audit files for stats-periods analysis.
 - `EarningsCalendarFile` — implements `IEarningsCalendar` by loading `earnings_calendar.json`.
 - `YahooFinanceAdapter` — implements `IMarketDataProvider` via a verified Yahoo integration path. Retrieves up to 365 days of daily OHLCV for technical scoring and next earnings dates for fallback use when the local calendar lacks a ticker. The adapter owns provider-specific request shaping, boundary clamping, timestamp normalization, and exception propagation. The exact Yahoo library or HTTP strategy is an implementation detail until live verification passes.
-- `AppDbContext` — EF Core `DbContext` for PostgreSQL with fluent configuration, snake_case table naming, and string-mapped enums. Manages `MarketDataRefreshRuns`, `MarketDataSnapshots`, `MarketDataSnapshotQuotes`, and `MarketDataSnapshotMissingSymbols`.
+- `AppDbContext` — EF Core `DbContext` for PostgreSQL with fluent configuration, snake_case table naming, and string-mapped enums. Manages `MarketDataRefreshRuns`, `MarketDataSnapshots`, `MarketDataSnapshotQuotes`, `MarketDataSnapshotMissingSymbols`, `SignalRuns`, `SignalRunResults`, and `TradeGovernorStates`.
 - `MarketDataSnapshotPersistenceService` — persists immutable market-data snapshots from refresh runs. Handles symbol normalization, quote deduplication, coverage validation, transactional writes, and best-effort failure marking.
 - `MarketDataSnapshotReadService` — reads price history from persisted snapshots. Supports live reads (freshness-gated via `FreshUntilUtc`) and historical reads (as-of-date ordered without TTL rejection).
 - `LiveSnapshotMarketDataProvider` / `HistoricalSnapshotMarketDataProvider` — implement `IMarketDataProvider` by reading from persisted snapshots via the read service.
-- `DependencyInjection.AddPersistence` — registers `AppDbContext` with `UseNpgsql`, binds `PersistenceOptions` from configuration, and adds the `PostgreSqlHealthCheck`.
+- `SignalRunPersistenceService` — persists signal pipeline execution results. Validates failed-run requests, normalizes and deduplicates tickers (last wins), truncates reasons, writes run + results + governor state in a single transaction, and marks runs failed on rollback (best-effort).
+- `SignalRunReadService` — reads signal run results from PostgreSQL. Supports latest live run (most recent completed non-simulation), run by ID, and recent runs (capped at 100). Eager-loads results sorted by ticker.
+- `TradeGovernorDbStateStore` — implements `ITradeGovernorStateStore` backed by PostgreSQL. Upserts a single row per mode (`"live"` or `"simulation"`) with day-reset logic matching `JsonStateStore`. Handles concurrent-insert races via retry on unique constraint violation.
+- `TradeGovernorDbStateStoreFactory` — creates `TradeGovernorDbStateStore` instances with a specific mode. Registered in DI for mode-parameterized construction.
+- `DependencyInjection.AddPersistence` — registers `AppDbContext` with `UseNpgsql`, binds `PersistenceOptions` from configuration, adds `PostgreSqlHealthCheck`, and registers `SignalRunPersistenceService`, `SignalRunReadService`, and `TradeGovernorDbStateStoreFactory`.
 - `PersistenceOptions` — configuration options for command timeout, detailed errors, and sensitive data logging.
 - `PostgreSqlHealthCheck` — implements `IHealthCheck` to verify database connectivity.
 
@@ -140,14 +144,18 @@ flowchart TD
     EG -->|"List&lt;NewsSignal&gt;"| TG["TradeGovernor.Decide\n(news, market, clock)"]
     TS -->|"List&lt;MarketSignal&gt;"| TG
 
-    STATE["state.json"] <--> TG
+    STATE["state.json /\ntrade_governor_state"] <--> TG
 
     TG -->|"List&lt;FinalSignal&gt;"| OR["OutputRenderer"]
     TG -->|"List&lt;FinalSignal&gt;"| AW["AuditWriter"]
+    TG -->|"List&lt;FinalSignal&gt;"| SRP["SignalRunPersistenceService"]
 
     OR --> TXT["signals.txt"]
     OR --> JSON["signals.json"]
     AW --> JSONL["logs/decisions.jsonl"]
+    SRP --> PG_SIG[("PostgreSQL\nsignal_run*,\ntrade_governor_state")]
+
+    PG_SIG --> SRR["SignalRunReadService"]
 
     JSON --> API_READ["Api\nSignalsFileReader"]
     API_READ --> HTTP["HTTP Response\nGET /api/signals"]
@@ -309,6 +317,7 @@ BlowingCandles/
 │   │       ├── AppDbContext.cs
 │   │       ├── DependencyInjection.cs
 │   │       ├── MarketDataPersistenceLimits.cs
+│   │       ├── SignalRunPersistenceLimits.cs
 │   │       ├── Entities/
 │   │       │   ├── MarketDataRefreshRunEntity.cs
 │   │       │   ├── MarketDataRefreshRunStatus.cs
@@ -316,28 +325,42 @@ BlowingCandles/
 │   │       │   ├── MarketDataSnapshotStatus.cs
 │   │       │   ├── MarketDataSnapshotQuoteEntity.cs
 │   │       │   ├── MarketDataSnapshotMissingSymbolEntity.cs
-│   │       │   └── MarketDataMissingSymbolReason.cs
+│   │       │   ├── MarketDataMissingSymbolReason.cs
+│   │       │   ├── SignalRunEntity.cs
+│   │       │   ├── SignalRunResultEntity.cs
+│   │       │   ├── SignalRunStatus.cs
+│   │       │   ├── SignalRunType.cs
+│   │       │   └── TradeGovernorStateEntity.cs
 │   │       ├── Configurations/
 │   │       │   ├── MarketDataRefreshRunConfiguration.cs
 │   │       │   ├── MarketDataSnapshotConfiguration.cs
 │   │       │   ├── MarketDataSnapshotQuoteConfiguration.cs
-│   │       │   └── MarketDataSnapshotMissingSymbolConfiguration.cs
+│   │       │   ├── MarketDataSnapshotMissingSymbolConfiguration.cs
+│   │       │   ├── SignalRunConfiguration.cs
+│   │       │   ├── SignalRunResultConfiguration.cs
+│   │       │   └── TradeGovernorStateConfiguration.cs
 │   │       ├── HealthChecks/
 │   │       │   └── PostgreSqlHealthCheck.cs
 │   │       ├── Models/
-│   │       │   └── MarketDataRefreshModels.cs
+│   │       │   ├── MarketDataRefreshModels.cs
+│   │       │   └── SignalRunModels.cs
 │   │       ├── Options/
 │   │       │   └── PersistenceOptions.cs
 │   │       ├── Services/
 │   │       │   ├── MarketDataSnapshotPersistenceService.cs
-│   │       │   └── MarketDataSnapshotReadService.cs
+│   │       │   ├── MarketDataSnapshotReadService.cs
+│   │       │   ├── SignalRunPersistenceService.cs
+│   │       │   ├── SignalRunReadService.cs
+│   │       │   ├── TradeGovernorDbStateStore.cs
+│   │       │   └── TradeGovernorDbStateStoreFactory.cs
 │   │       ├── Providers/
 │   │       │   ├── LiveSnapshotMarketDataProvider.cs
 │   │       │   └── HistoricalSnapshotMarketDataProvider.cs
 │   │       ├── DesignTime/
 │   │       │   └── AppDbContextFactory.cs
 │   │       └── Migrations/
-│   │           └── AddMarketDataPersistence.cs
+│   │           ├── AddMarketDataPersistence.cs
+│   │           └── AddSignalRunPersistence.cs
 │   ├── BlowingCandles.Application/
 │   │   ├── SignalPipeline.cs
 │   │   ├── OutputRenderer.cs

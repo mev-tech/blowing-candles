@@ -237,6 +237,32 @@ This document describes the order in which major system capabilities should be i
 
 **Validation:** Integration tests covering valid signals (order preservation), case-insensitive ticker lookup, unknown ticker (404), missing file (503), empty array (200 with `[]`), and malformed JSON (503). All tests pass, solution builds with zero warnings.
 
+## Phase 13: Signal Run Persistence ✅
+
+**Status: COMPLETED**
+
+**Capabilities:** PostgreSQL-backed signal pipeline result persistence and DB-backed trade governor state
+
+**What was built:**
+- PostgreSQL schema with `signal_run`, `signal_run_result`, and `trade_governor_state` tables via EF Core migration (`AddSignalRunPersistence`)
+- `SignalRunEntity` and `SignalRunResultEntity` with string-mapped enums (`SignalRunType`: Realtime/AsOf/Range; `SignalRunStatus`: Running/Completed/Failed; domain `Action` and `NewsState` enums), `DateOnly` as-of dates, simulation flag, and getter-only navigation collection property
+- `TradeGovernorStateEntity` with unique index on `mode` (`"live"` or `"simulation"`), `day` string, `buys_today` count, and nullable `last_buy_at` timestamp
+- Fluent `IEntityTypeConfiguration` classes enforcing snake_case table names, check constraints (`ticker_count >= 0`, `buys_today >= 0`), unique index on `(run_id, ticker)` for results, unique index on `mode` for governor state, cascade delete from `signal_run` to `signal_run_result`, and composite indexes for query performance
+- `AppDbContext` extended with `DbSet<SignalRunEntity>`, `DbSet<SignalRunResultEntity>`, and `DbSet<TradeGovernorStateEntity>`
+- `SignalRunPersistenceService` implementing the full run persistence workflow: failed-run validation (rejects signals when `ErrorMessage` is set), ticker normalization (trim + uppercase), ticker deduplication (last wins, consistent with `MarketDataSnapshotPersistenceService`), reason truncation (256 chars), transactional writes with governor state upsert, deduplicated `TickerCount`, and best-effort run failure marking on rollback
+- `SignalRunReadService` with `GetLatestLiveRun()` (latest completed non-simulation run), `GetRunById()`, and `GetRecentRuns()` (capped at 100, ordered by `started_at_utc` descending) — all with eager-loaded results sorted by ticker
+- `TradeGovernorDbStateStore` implementing `ITradeGovernorStateStore` backed by PostgreSQL with day-reset logic matching `JsonStateStore`, upsert pattern with concurrent-insert race handling, and strict mode validation (`"live"` or `"simulation"` only)
+- `TradeGovernorDbStateStoreFactory` for DI-compatible mode-parameterized construction
+- `TradeGovernorStatePersistence` shared static helper for upsert, normalization, and day formatting — used by both `TradeGovernorDbStateStore.Save()` and `SignalRunPersistenceService.PersistGovernorState()`
+- `SignalRunPersistenceLimits` centralizing max-length constants for ticker (16), trigger (32), reason (256), error message (1024), mode (16), and day (10)
+- Request/result models: `PersistSignalRunRequest`, `SignalRunPersistenceResult`, `SignalRunReadResult`, `SignalRunSignalResult`
+- DI registration of `SignalRunPersistenceService`, `SignalRunReadService`, and `TradeGovernorDbStateStoreFactory` in `AddPersistence()`
+- `PostgresContainerFixture.ResetAsync()` updated to truncate `signal_run`, `trade_governor_state`, and `market_data_refresh_run` with `RESTART IDENTITY CASCADE`
+
+**Why thirteenth:** Foundational schema for the API-first architecture. API write endpoints, background worker, and DB-backed signal reads all depend on these tables and services. The market-data persistence layer (Phase 10) and Testcontainers infrastructure (Phase 11) provide the EF Core and testing patterns reused here.
+
+**Validation:** `SignalRunPersistenceServiceTests` covering successful run with signals and governor state, empty watchlist, failed run, failed-run-with-signals rejection, ticker normalization and reason truncation, duplicate ticker deduplication (last wins with correct `TickerCount`), and simulation metadata. `SignalRunReadServiceTests` covering latest live run selection, null when no completed live run, run-by-ID lookup with null for missing, recent runs ordering with limit, and excessive limit capping. `TradeGovernorDbStateStoreTests` covering empty-table load, matching-day load, stale-day reset, single-row-per-mode upsert, and live/simulation isolation. All 130 tests pass across all projects, solution builds with zero warnings.
+
 ## Decision Points
 
 The following decisions should be made before or during the indicated phase:
@@ -258,3 +284,6 @@ The following decisions should be made before or during the indicated phase:
 | Refresh persistence model | 10 | Persist immutable snapshots with explicit missing-symbol tracking; do not mutate prior snapshot rows in place |
 | PostgreSQL ORM | 10 | EF Core with Npgsql provider, fluent configuration, string-mapped enums |
 | Integration test infrastructure | 11 ✅ | Testcontainers with `postgres:16-alpine`, xUnit collection fixture, table truncation for isolation; WireMock migration deferred |
+| Signal run persistence model | 13 ✅ | Immutable signal runs with deduplicated results; DB-backed governor state with mode isolation; `SignalRunPersistenceService` and `SignalRunReadService`; `TradeGovernorDbStateStore` implementing `ITradeGovernorStateStore` |
+| Signal run ticker deduplication | 13 ✅ | Last-wins deduplication consistent with `MarketDataSnapshotPersistenceService` quote deduplication; `TickerCount` reflects deduplicated count |
+| Trade governor DB state store | 13 ✅ | Upsert pattern with concurrent-insert race handling; strict mode validation (`"live"` / `"simulation"`); day-reset matching `JsonStateStore` behavior |
