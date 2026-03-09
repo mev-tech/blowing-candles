@@ -2,8 +2,21 @@ namespace BlowingCandles.Infrastructure.MarketData;
 
 internal sealed class YahooFinanceRequestFactory
 {
-    private static readonly Uri HistoricalPricesBaseUri = new("https://query1.finance.yahoo.com/v8/finance/chart/");
-    private static readonly Uri EarningsBaseUri = new("https://query1.finance.yahoo.com/v10/finance/quoteSummary/");
+    private readonly Uri _historicalPricesBaseUri;
+    private readonly Uri _earningsBaseUri;
+
+    public YahooFinanceRequestFactory()
+        : this(
+            new Uri("https://query1.finance.yahoo.com/v8/finance/chart/"),
+            new Uri("https://query1.finance.yahoo.com/v10/finance/quoteSummary/"))
+    {
+    }
+
+    internal YahooFinanceRequestFactory(Uri historicalPricesBaseUri, Uri earningsBaseUri)
+    {
+        _historicalPricesBaseUri = historicalPricesBaseUri ?? throw new ArgumentNullException(nameof(historicalPricesBaseUri));
+        _earningsBaseUri = earningsBaseUri ?? throw new ArgumentNullException(nameof(earningsBaseUri));
+    }
 
     public YahooFinanceRequest CreateHistoricalPricesRequest(
         string ticker,
@@ -41,13 +54,13 @@ internal sealed class YahooFinanceRequestFactory
     {
         return new YahooFinanceRequest(
             OperationName: "earnings calendar",
-            Uri: new Uri($"{EarningsBaseUri}{Uri.EscapeDataString(ticker)}?modules=calendarEvents&formatted=false"));
+            Uri: new Uri($"{_earningsBaseUri}{Uri.EscapeDataString(ticker)}?modules=calendarEvents&formatted=false"));
     }
 
-    private static Uri BuildHistoricalPricesUri(string ticker, DateTimeOffset startUtc, DateTimeOffset endExclusiveUtc)
+    private Uri BuildHistoricalPricesUri(string ticker, DateTimeOffset startUtc, DateTimeOffset endExclusiveUtc)
     {
         return new Uri(
-            $"{HistoricalPricesBaseUri}{Uri.EscapeDataString(ticker)}" +
+            $"{_historicalPricesBaseUri}{Uri.EscapeDataString(ticker)}" +
             $"?interval=1d&includePrePost=false&events=div%2Csplits" +
             $"&period1={startUtc.ToUnixTimeSeconds()}" +
             $"&period2={endExclusiveUtc.ToUnixTimeSeconds()}");

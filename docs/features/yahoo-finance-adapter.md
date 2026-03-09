@@ -1,126 +1,254 @@
-# Feature: Yahoo Finance Adapter
+# Feature: Yahoo Finance Adapter — Testcontainers Contract Suite
 
 ## Feature Name
 
 yahoo-finance-adapter
 
-## Status
-
-DEFERRED. The adapter seams (request factory, transport, response parser) and offline tests are complete. The next missing step is a Testcontainers-backed mock HTTP contract suite, followed by live Yahoo smoke validation once the future refresh workflow exists. The synchronous CLI pipeline is no longer the primary consumer of the live Yahoo path.
-
 ## Purpose
 
-Provide verified live Yahoo-backed market data for the **future refresh workflow** that produces persisted snapshots, and as an earnings-date fallback for tickers absent from the local calendar. This feature is not complete until that workflow can fetch real price history from Yahoo and persist a valid snapshot.
-
-## What Landed
-
-- `YahooFinanceAdapter` implements `IMarketDataProvider` with internal seams: `YahooFinanceRequestFactory`, `IYahooFinanceTransport`, `YahooFinanceResponseParser`.
-- Typed exception hierarchy: auth, rate-limit, transport, parsing.
-- Boundary clamping for future end dates and live-run cap at `nowUtc`.
-- Chronological ordering and deliberate timestamp normalization.
-- `GetNextEarningsDate` parses Yahoo `calendarEvents` with raw/fmt/string/date-only handling.
-- 12 adapter-focused offline tests covering mapping, ordering, empty results, boundary clamping, earnings parsing, and transport error handling.
-- Diagnostic writer plumbed through `EarningsGate` and `TechnicalScorer` for stderr diagnostics.
-
-## Remaining Gaps
-
-- `YahooFinanceHttpTransport` has not been verified against live Yahoo endpoints (last probe returned `401 Unauthorized`).
-- No socket-level contract suite currently exercises the real `HttpClient` transport against deterministic Yahoo-shaped responses.
-- The refresh workflow that will consume the adapter does not exist yet.
-- No network-enabled smoke validation has passed.
-
-## Scope (Remaining)
-
-- Add a Testcontainers-backed mock HTTP server suite to exercise the real `YahooFinanceHttpTransport` against deterministic Yahoo-shaped responses.
-- Verify or fix the live HTTP transport so the refresh workflow can fetch real data from Yahoo.
-- The adapter may become async if the refresh workflow uses an async pipeline.
-- Add a network-enabled smoke-validation step proving the refresh workflow produces a valid snapshot.
-- The synchronous CLI pipeline will read from persisted snapshots, not from Yahoo directly.
+Exercise the real `YahooFinanceHttpTransport` through an actual HTTP socket boundary against a Testcontainers-managed WireMock server returning deterministic Yahoo-shaped responses. This closes the gap between the existing 12 offline tests (which use fake `IYahooFinanceTransport` implementations) and the future live Yahoo smoke validation, without requiring network access or a running Yahoo endpoint.
 
 ## Inputs
 
-### Ticker
-
-- A ticker string (for example, `"AAPL"`). The adapter normalizes or forwards it according to the verified Yahoo integration path.
-
-### As-Of Date
-
-- `DateOnly asOfDate` - the requested end date for price-history retrieval.
-- The adapter fetches approximately 365 days of daily data ending at the requested as-of date.
-- Implementations must clamp provider-specific end boundaries so live runs do not request unsupported future data.
-
-### As-Of Timestamp
-
-- `DateTimeOffset asOfUtc` - the reference time for earnings fallback lookups.
-- Used only when the local earnings calendar does not contain the ticker.
+| Input | Source | Format | Required |
+|-------|--------|--------|----------|
+| Ticker | Test case | `string` | Yes |
+| As-of date | Test case | `DateOnly` | For historical-price tests |
+| As-of timestamp | Test case | `DateTimeOffset` | For earnings-fallback tests |
+| Mock Yahoo responses | Checked-in JSON fixture files under `tests/fixtures/yahoo-finance/` | JSON | Yes |
+| Mock server base URI | WireMock Testcontainers fixture | `Uri` | Yes |
 
 ## Outputs
 
-### GetDailyPriceHistory
-
-- `IReadOnlyList<PriceBar>` containing daily OHLCV data ordered chronologically (oldest first).
-- `PriceBar.Timestamp` must reflect deliberate source-time normalization, not a guessed UTC stamp.
-- Empty results are allowed only when the provider legitimately has no data for the ticker or date range.
-- On transport, auth, parsing, or provider errors, the adapter throws and the calling domain service converts that to `WAIT / MARKET_DATA_ERROR`.
-
-### GetNextEarningsDate
-
-- Returns the next future earnings date from Yahoo for tickers absent from the local calendar.
-- Returns `null` only when Yahoo legitimately has no usable earnings date.
-- On transport, auth, parsing, or provider errors, the adapter throws and the calling domain service converts that to `WAIT / DATA_ERROR`.
-
-## Requirements
-
-1. The future refresh workflow must be able to fetch live historical prices and earnings dates from Yahoo in a healthy network environment.
-2. Earnings fallback must match the Python behavior: local calendar first; Yahoo only when the ticker is absent locally.
-3. Provider-specific HTTP, auth, and parsing behavior must be isolated behind internal seam(s) so failures can be tested deterministically without live network access. *(Done)*
-4. The adapter must avoid future end dates and other provider-invalid requests. *(Done)*
-5. The adapter must preserve chronological ordering and deliberate timestamp normalization. *(Done)*
-6. The fail-safe invariant remains unchanged: all adapter failures must still become `WAIT` in domain services. *(Done)*
-7. A Testcontainers-backed contract suite must exercise the real HTTP transport against deterministic Yahoo-shaped responses before live validation is attempted.
-8. The phase cannot be marked complete without a network-enabled smoke verification proving the refresh workflow produces a valid snapshot.
-
-## Remaining Implementation Plan
-
-1. Add the mock-container contract suite described in `docs/features/yahoo-finance-testcontainers.md`.
-2. Verify or fix `YahooFinanceHttpTransport` against live Yahoo endpoints (auth, headers, cookies).
-3. If the refresh workflow uses an async pipeline, add `GetStringAsync` to `IYahooFinanceTransport` and update the adapter accordingly.
-4. Run a network-enabled smoke validation proving the refresh workflow persists a valid snapshot with real Yahoo data.
-5. Update this document once the verification gate passes.
+| Output | Format | Destination |
+|--------|--------|-------------|
+| Contract test results | xUnit output | CI / terminal |
+| Captured request metadata | WireMock stub matching / verification API | Test assertions |
+| Deterministic adapter exceptions or parsed values | In-memory assertions | Test process |
 
 ## Configuration
 
-No user-facing adapter configuration is required beyond existing app config. The integration technology, headers, or transport details are infrastructure concerns.
+### Package additions to `BlowingCandles.Infrastructure.Tests.csproj`
+
+| Package | Action |
+|---------|--------|
+| `WireMock.Net` | Add — provides an in-process WireMock HTTP stub server; no Docker image or Testcontainers package needed |
+
+### Why WireMock.Net (in-process) instead of a Testcontainers-managed WireMock image
+
+The Yahoo contract suite needs a programmable HTTP server that can return deterministic responses and verify request shape. `WireMock.Net` runs in-process as a `WireMockServer.Start()` call — no Docker dependency, no container startup latency, no image pull. This keeps the Yahoo contract tests runnable in CI environments where Docker may not be available (unlike the PostgreSQL Testcontainers tests from Phase 11, which genuinely need a real database engine). The term "Testcontainers" in the original plan described the intent (exercising real HTTP transport against a mock server), not a hard requirement for the `Testcontainers` NuGet package.
+
+### Adapter base-URI injection seam
+
+`YahooFinanceRequestFactory` currently hardcodes `https://query1.finance.yahoo.com` as the base URI. The contract tests need to redirect requests to the WireMock server. Add an `internal` constructor parameter (or an `internal` base-URI property) to `YahooFinanceRequestFactory` so tests can inject the mock server's base address. The production parameterless constructor continues to use the hardcoded Yahoo URI.
+
+### Fixture location
+
+- `tests/BlowingCandles.Infrastructure.Tests/Fixtures/WireMockServerFixture.cs` — shared xUnit class fixture that starts a `WireMockServer` on a random port
+- `tests/fixtures/yahoo-finance/` — checked-in JSON fixture files for chart and earnings responses
+
+### xUnit wiring
+
+Tests use xUnit `IClassFixture<WireMockServerFixture>` to share a single WireMock server instance within the test class. The fixture resets all stub mappings between tests.
+
+## Edge Cases
+
+1. **WireMock port conflict.** `WireMockServer.Start()` uses a random available port. No fixed port assumption.
+
+2. **Base-URI injection must not leak into production.** The `YahooFinanceRequestFactory` base-URI override is `internal` and only accessible from tests via `InternalsVisibleTo`. The public/production constructor remains unchanged.
+
+3. **Request path matching.** WireMock stubs must match the exact URL path structure Yahoo uses (`/v8/finance/chart/{ticker}` and `/v10/finance/quoteSummary/{ticker}`) including query parameters. This validates that `YahooFinanceRequestFactory` builds correct URIs.
+
+4. **Synchronous `HttpClient.Send`.** `YahooFinanceHttpTransport` calls `_httpClient.Send()` (synchronous). WireMock.Net supports both sync and async HTTP — no special handling needed.
+
+5. **Parallel test isolation.** Each test resets WireMock stubs at the start. Tests within the same class run sequentially (xUnit default for non-parallel collections). No cross-test stub contamination.
+
+6. **Existing offline tests remain unchanged.** The 12 existing `YahooFinanceAdapterTests` using `RecordingTransport` and `StubHttpMessageHandler` are not modified. The contract suite is a new test class that complements them.
+
+## Implementation Notes
+
+### 1. WireMock Server Fixture
+
+```csharp
+public sealed class WireMockServerFixture : IDisposable
+{
+    public WireMockServer Server { get; }
+    public Uri BaseUri { get; }
+
+    public WireMockServerFixture()
+    {
+        Server = WireMockServer.Start();
+        BaseUri = new Uri(Server.Url!);
+    }
+
+    public void Reset() => Server.Reset();
+
+    public void Dispose() => Server.Dispose();
+}
+```
+
+### 2. Base-URI injection in YahooFinanceRequestFactory
+
+Add an `internal` constructor that accepts base URIs:
+
+```csharp
+internal sealed class YahooFinanceRequestFactory
+{
+    private readonly Uri _historicalPricesBaseUri;
+    private readonly Uri _earningsBaseUri;
+
+    public YahooFinanceRequestFactory()
+        : this(
+            new Uri("https://query1.finance.yahoo.com/v8/finance/chart/"),
+            new Uri("https://query1.finance.yahoo.com/v10/finance/quoteSummary/"))
+    {
+    }
+
+    internal YahooFinanceRequestFactory(Uri historicalPricesBaseUri, Uri earningsBaseUri)
+    {
+        _historicalPricesBaseUri = historicalPricesBaseUri;
+        _earningsBaseUri = earningsBaseUri;
+    }
+
+    // ... existing methods use _historicalPricesBaseUri and _earningsBaseUri
+    //     instead of the static readonly fields
+}
+```
+
+### 3. Contract test class structure
+
+```csharp
+public sealed class YahooFinanceContractTests : IClassFixture<WireMockServerFixture>
+{
+    private readonly WireMockServerFixture _fixture;
+
+    public YahooFinanceContractTests(WireMockServerFixture fixture)
+    {
+        _fixture = fixture;
+        _fixture.Reset();
+    }
+
+    private YahooFinanceAdapter CreateAdapterPointingAtMock(DateTimeOffset? nowUtc = null)
+    {
+        var requestFactory = new YahooFinanceRequestFactory(
+            new Uri($"{_fixture.BaseUri}v8/finance/chart/"),
+            new Uri($"{_fixture.BaseUri}v10/finance/quoteSummary/"));
+        var httpClient = new HttpClient { BaseAddress = _fixture.BaseUri };
+        var transport = new YahooFinanceHttpTransport(httpClient);
+        var timeProvider = nowUtc is null
+            ? TimeProvider.System
+            : new StubTimeProvider(nowUtc.Value);
+        return new YahooFinanceAdapter(requestFactory, transport, new YahooFinanceResponseParser(), timeProvider);
+    }
+}
+```
+
+### 4. Checked-in fixture files
+
+Place representative Yahoo JSON payloads under `tests/fixtures/yahoo-finance/`:
+
+- `chart-aapl-success.json` — valid chart response with multiple bars
+- `chart-empty-result.json` — valid chart response with empty `result` array
+- `earnings-aapl-success.json` — valid earnings response with future dates
+- `earnings-no-date.json` — valid earnings response with no usable date
+- `earnings-malformed-date.json` — earnings response with unparseable date field
+
+These files are loaded at test time and registered as WireMock stubs.
+
+### 5. Relationship to Phase 10 (Market Data Persistence)
+
+Phase 10 is complete. The Yahoo adapter is the upstream data source for the refresh workflow that persists snapshots. This contract suite validates that the adapter correctly shapes requests and parses responses, which is a prerequisite for the refresh workflow to produce valid snapshots. The contract suite does not directly interact with PostgreSQL or persistence services.
+
+### 6. Relationship to Phase 11 (PostgreSQL Testcontainers)
+
+Phase 11 introduces `Testcontainers.PostgreSql` for real-database integration tests. The Yahoo contract suite uses `WireMock.Net` (in-process) instead, because it needs a programmable HTTP stub, not a database. Both test suites can coexist in `BlowingCandles.Infrastructure.Tests` without conflict. If Phase 11 lands first, the Yahoo contract suite simply adds `WireMock.Net` alongside the existing Testcontainers package.
+
+### 7. What this does NOT prove
+
+- Live Yahoo endpoint availability, auth-cookie behavior, or rate-limit tolerance.
+- End-to-end refresh workflow producing a valid persisted snapshot with real Yahoo data.
+- Phase 9 cannot close until those live validations also pass.
+
+## Test Scenarios
+
+| Scenario | Input | Expected Output |
+|----------|-------|-----------------|
+| Historical prices happy path | Ticker `AAPL`, valid chart JSON fixture, `200 OK` | Correct request path `/v8/finance/chart/AAPL` with `period1`, `period2`, `interval=1d` query params; bars mapped to `PriceBar[]` in chronological order |
+| Ticker normalization in request | Ticker `aapl` (lowercase) | Request path uses `AAPL` (uppercase) |
+| Future as-of date clamping | `asOfDate` in the future, `nowUtc` fixed | `period2` query param does not exceed `nowUtc` unix timestamp |
+| Weekend as-of date | Saturday date with Friday trading data | `period2` uses next-UTC-day exclusive boundary; bars returned correctly |
+| Empty chart result | Valid JSON with empty `result` array | Empty `PriceBar[]`, no exception |
+| Null timestamps in chart | Valid chart JSON where `timestamp` property is null | Empty `PriceBar[]`, no exception |
+| Earnings happy path | Valid earnings JSON with future `earningsDate` entries | Nearest future `DateTimeOffset` returned |
+| Earnings date-only format | Earnings JSON with `"fmt": "2026-03-12"` only (no `raw`) | `DateTimeOffset` at midnight UTC for that date |
+| Earnings no usable date | Valid earnings JSON with empty `calendarEvents` | `null` returned, no exception |
+| Earnings malformed date | Earnings JSON with `"fmt": "not-a-date"` | `YahooFinanceParsingException` thrown |
+| HTTP 401 Unauthorized | WireMock returns `401` | `YahooFinanceAuthenticationException` with `401` in message |
+| HTTP 403 Forbidden | WireMock returns `403` | `YahooFinanceAuthenticationException` with `403` in message |
+| HTTP 429 Too Many Requests | WireMock returns `429` | `YahooFinanceRateLimitException` with `429` in message |
+| HTTP 500 Server Error | WireMock returns `500` | `YahooFinanceTransportException` |
+| Malformed JSON body | WireMock returns `200` with `"{ not-json"` | `YahooFinanceParsingException` |
+| Yahoo error object in response | Valid JSON with non-null `chart.error` object | `YahooFinanceTransportException` with error description |
+| Request headers verification | Any successful request | WireMock verifies `Accept: application/json` and `User-Agent` headers present |
 
 ## Dependencies
 
-- `BlowingCandles.Domain.Interfaces.IMarketDataProvider`
-- A verified Yahoo integration path (direct HTTP via `YahooFinanceHttpTransport`)
-- Infrastructure tests covering adapter behavior without live network dependency *(Done)*
-- Testcontainers-backed mock HTTP contract tests (planned)
-- Phase 10 (Market Data Persistence) — the snapshot schema must exist before refresh-path live validation is meaningful
-- Phase 11 (PostgreSQL Testcontainers) — Docker-dependent integration test infrastructure is already part of the test suite plan
+- `YahooFinanceAdapter`, `YahooFinanceRequestFactory`, `YahooFinanceHttpTransport`, `YahooFinanceResponseParser` — existing adapter seams in `src/BlowingCandles.Infrastructure/MarketData/`
+- `InternalsVisibleTo` from `BlowingCandles.Infrastructure` to `BlowingCandles.Infrastructure.Tests` — already configured
+- `WireMock.Net` NuGet package (test-only)
+- Checked-in Yahoo JSON fixture files
 
 ## Files
 
-- `src/BlowingCandles.Infrastructure/MarketData/YahooFinanceAdapter.cs` - public adapter implementation
-- `src/BlowingCandles.Infrastructure/BlowingCandles.Infrastructure.csproj` - market-data dependencies
-- `tests/BlowingCandles.Infrastructure.Tests/` - adapter-focused tests
-- `docs/features/yahoo-finance-testcontainers.md` - planned mock-container contract suite
-- `docs/reviews/yahoo-finance-adapter-fixes.md` - remediation plan
+### New files
+
+- `tests/BlowingCandles.Infrastructure.Tests/Fixtures/WireMockServerFixture.cs` — WireMock server lifecycle
+- `tests/BlowingCandles.Infrastructure.Tests/YahooFinanceContractTests.cs` — contract test class
+- `tests/fixtures/yahoo-finance/chart-aapl-success.json` — chart happy-path fixture
+- `tests/fixtures/yahoo-finance/chart-empty-result.json` — empty chart fixture
+- `tests/fixtures/yahoo-finance/earnings-aapl-success.json` — earnings happy-path fixture
+- `tests/fixtures/yahoo-finance/earnings-no-date.json` — no-earnings-date fixture
+- `tests/fixtures/yahoo-finance/earnings-malformed-date.json` — bad-date fixture
+
+### Modified files
+
+- `src/BlowingCandles.Infrastructure/MarketData/YahooFinanceRequestFactory.cs` — add `internal` constructor for base-URI injection
+- `tests/BlowingCandles.Infrastructure.Tests/BlowingCandles.Infrastructure.Tests.csproj` — add `WireMock.Net` package reference
+
+### Unchanged files
+
+- `tests/BlowingCandles.Infrastructure.Tests/YahooFinanceAdapterTests.cs` — existing offline tests remain as-is
 
 ## Validation
 
-- `dotnet build BlowingCandles.sln` succeeds in default configuration. *(Done)*
-- Existing Domain, Application, Infrastructure, and CrossValidation tests pass. *(Done)*
-- Adapter-focused offline tests cover historical prices, earnings fallback, and failure handling. *(Done — 12 tests)*
-- Testcontainers-backed Yahoo contract tests pass without live network access. *(Pending)*
-- The refresh workflow produces a valid snapshot with real Yahoo data in a healthy network environment. *(Pending — blocked on the future refresh workflow)*
+- `dotnet build BlowingCandles.sln` succeeds with zero warnings.
+- All 12 existing `YahooFinanceAdapterTests` continue to pass unchanged.
+- All new `YahooFinanceContractTests` pass without network access.
+- All existing Domain, Application, Infrastructure, CrossValidation, and persistence tests pass.
+- WireMock stubs verify correct request paths, query parameters, and headers.
+- The contract suite exercises the real `YahooFinanceHttpTransport` (real `HttpClient` over real TCP) — no fake transport.
 
-## Out of Scope
+## Review
 
-- Retries or background refresh scheduling (refresh workflow responsibility, not adapter).
-- Any change to domain scoring rules, gating priority, or policy behavior.
-- Non-Yahoo providers unless Yahoo proves unusable and a separate decision explicitly approves a replacement.
-- Synchronous CLI-to-Yahoo live retrieval — runtime reads will use persisted snapshots after Phase 10/11.
-- Treating the mock-container contract suite as a substitute for live Yahoo validation.
+**Reviewed:** 2026-03-09
+**Verdict:** OK
+
+### Architecture Compliance
+
+The implementation correctly follows the layered architecture. `YahooFinanceAdapter` is in Infrastructure and implements `IMarketDataProvider` from Domain. Internal seams (`YahooFinanceRequestFactory`, `IYahooFinanceTransport`, `YahooFinanceResponseParser`) are `internal`, not leaking to other layers. The base-URI injection constructor is `internal` and accessible via `InternalsVisibleTo`. No DI container — manual constructor wiring. Synchronous `HttpClient.Send()` matches the synchronous CLI architecture. Adapter throws typed exceptions which calling domain services catch and convert to WAIT, preserving the fail-safe invariant.
+
+### Behavior vs Specification
+
+All 17 test scenarios from the spec are implemented and pass. All 5 fixture JSON files are present. The `WireMockServerFixture`, base-URI injection seam, and contract test class structure all match the spec. Fixture files are correctly linked into the test project via `CopyToOutputDirectory`.
+
+### Missing Edge Cases
+
+The `RequestIncludesRequiredHeaders` test implicitly verifies headers via WireMock stub matching (if headers are wrong, the stub won't match and the request fails). The test body only asserts `Assert.Empty(bars)`, which reads as a "returns empty" test rather than a "headers present" test. Not a correctness issue since the stub's `WithHeader` matchers enforce the contract, but the test name is slightly misleading. Not blocking.
+
+### Unnecessary Complexity
+
+None found. Three focused internal classes behind one public adapter. No retry logic, no caching, no over-abstraction.
+
+### Deferred Fixes (see `docs/reviews/yahoo-finance-adapter-testcontainers-fixes.md`)
+
+A fixes document proposes migrating from `WireMock.Net` (in-process) to `WireMock.Net.Testcontainers` (Docker container) for consistency with Phase 11's Testcontainers-first approach. **All fixes are deferred to Phase 11.** The current in-process WireMock implementation is correct, exercises real HTTP transport over real TCP, and meets the stated contract suite goal. The migration is a consistency preference, not a correctness fix. See the fixes document for rationale.

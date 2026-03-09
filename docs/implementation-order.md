@@ -141,9 +141,9 @@ This document describes the order in which major system capabilities should be i
 
 ## Phase 9: Yahoo Finance Adapter — Live Transport Verification
 
-**Status: DEFERRED (offline seams complete; live acceptance still blocked on the future refresh workflow)**
+**Status: PARTIALLY COMPLETE (contract suite done; live acceptance still blocked on the future refresh workflow)**
 
-**Capabilities:** Verified live Yahoo transport for the future refresh workflow
+**Capabilities:** Verified Yahoo adapter request/response contract via mock HTTP server; live transport verification deferred to refresh workflow
 
 **What landed:**
 - `YahooFinanceAdapter` implements `IMarketDataProvider` with internal seams: `YahooFinanceRequestFactory`, `IYahooFinanceTransport`, `YahooFinanceResponseParser`
@@ -152,16 +152,20 @@ This document describes the order in which major system capabilities should be i
 - `GetNextEarningsDate` parses Yahoo `calendarEvents` (raw/fmt/string/date-only)
 - 12 adapter-focused offline tests covering mapping, ordering, boundary, earnings, and error handling
 - Diagnostic writer plumbed through `EarningsGate` and `TechnicalScorer`
+- WireMock.Net in-process contract suite (`YahooFinanceContractTests`) exercising real `YahooFinanceHttpTransport` over real TCP against deterministic Yahoo-shaped responses — 17 scenarios covering historical prices, earnings, HTTP errors, malformed responses, request headers, ticker normalization, and date boundary clamping
+- `WireMockServerFixture` (xUnit `IClassFixture`) managing WireMock server lifecycle with per-test stub reset
+- Internal base-URI injection seam in `YahooFinanceRequestFactory` for test-time redirection to mock server
+- 5 checked-in JSON fixture files under `tests/fixtures/yahoo-finance/`
 
 **What remains:**
-- Add a Testcontainers-backed mock HTTP server contract suite for `YahooFinanceHttpTransport` and `YahooFinanceAdapter` request/response behavior (see `docs/features/yahoo-finance-testcontainers.md`)
 - Verify or fix `YahooFinanceHttpTransport` against live Yahoo endpoints
 - If the refresh workflow is async, add async transport support
 - Run a network-enabled smoke validation proving the refresh workflow persists a valid snapshot
+- Migrate WireMock from in-process to `WireMock.Net.Testcontainers` for consistency with Phase 11 (deferred — see `docs/reviews/yahoo-finance-adapter-testcontainers-fixes.md`)
 
-**Why deferred:** The adapter's primary consumer is the refresh worker built on top of snapshot persistence, not the synchronous CLI pipeline. A mock-container contract suite can and should land earlier, but Phase 9 still cannot close until the live HTTP path has been proven end-to-end by the future refresh workflow.
+**Why not fully closed:** The adapter's primary consumer is the refresh worker built on top of snapshot persistence, not the synchronous CLI pipeline. The contract suite validates request/response shape without network access, but Phase 9 cannot close until the live HTTP path has been proven end-to-end by the future refresh workflow.
 
-**Validation:** Mock-container contract tests pass without live network access, the refresh workflow produces a valid snapshot with real Yahoo data, adapter-focused offline tests pass, and the automated suite remains green.
+**Validation:** 17 contract tests pass without network access, 12 adapter-focused offline tests pass, all existing Domain, Application, Infrastructure, CrossValidation, and persistence tests pass, solution builds with zero warnings.
 
 ## Phase 10: Market Data Persistence ✅
 
@@ -202,6 +206,7 @@ This document describes the order in which major system capabilities should be i
 - `PersistenceDependencyInjectionTests` DI resolution test updated to use the Testcontainers connection string
 - Table truncation helper (`TRUNCATE ... CASCADE`) for per-test isolation
 - Removal of `Microsoft.EntityFrameworkCore.InMemory` package
+- Optional: migrate Yahoo Finance contract suite from in-process `WireMock.Net` to `WireMock.Net.Testcontainers` for Testcontainers consistency (see `docs/reviews/yahoo-finance-adapter-testcontainers-fixes.md`)
 
 **Why eleventh:** The persistence layer (Phase 10) is implemented with InMemory tests as a stopgap. InMemory does not enforce check constraints, unique indexes, cascade deletes, or PostgreSQL-specific type mappings. Testcontainers closes this gap by running the exact same migration against real PostgreSQL, validating the schema and service behavior together.
 
@@ -237,10 +242,10 @@ The following decisions should be made before or during the indicated phase:
 | JSON serializer | 3 ✅ | System.Text.Json |
 | State reset behavior | 4 ✅ | Uses `IClock` for day-reset; simulation uses `as_of` (accepted divergence from Python) |
 | Run Range architecture | 7 ✅ | In-process loop with shared state (no subprocesses) |
-| Yahoo Finance integration strategy | 9 | Offline seams are complete; add mock-container contract tests before live transport verification against the future refresh workflow |
+| Yahoo Finance integration strategy | 9 | Offline seams and WireMock.Net contract suite complete; live transport verification deferred to refresh workflow |
 | Sync-over-async pattern | 9 | Decided by the refresh worker's pipeline design; synchronous CLI reads shift to snapshots |
-| Yahoo HTTP contract testing | 9 | Testcontainers-backed mock HTTP server should exercise the real transport without relying on live Yahoo |
-| Yahoo verification gate | 9 | Required — both the mock-container contract suite and a live refresh-workflow smoke validation must pass before the phase is closed |
+| Yahoo HTTP contract testing | 9 ✅ | WireMock.Net in-process contract suite exercises real `YahooFinanceHttpTransport` over TCP — 17 scenarios, no network access required |
+| Yahoo verification gate | 9 | Partially met — contract suite passes ✅; live refresh-workflow smoke validation still required before phase closure |
 | Snapshot read policy | 10 | Live reads require a fresh snapshot (`FreshUntilUtc > now`); historical reads select the latest snapshot whose `as_of_date` is not newer than the requested simulation date |
 | Refresh persistence model | 10 | Persist immutable snapshots with explicit missing-symbol tracking; do not mutate prior snapshot rows in place |
 | PostgreSQL ORM | 10 | EF Core with Npgsql provider, fluent configuration, string-mapped enums |

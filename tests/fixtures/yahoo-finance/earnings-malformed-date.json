@@ -1,0 +1,16 @@
+{
+  "quoteSummary": {
+    "result": [
+      {
+        "calendarEvents": {
+          "earnings": {
+            "earningsDate": [
+              { "fmt": "not-a-date" }
+            ]
+          }
+        }
+      }
+    ],
+    "error": null
+  }
+}

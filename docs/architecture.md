@@ -409,9 +409,9 @@ Dockerfile, operational documentation, final cross-validation against Python out
 
 ### Phase 9: Yahoo Finance Adapter — Live Transport Verification
 
-Deferred. The adapter's offline seams (request factory, transport interface, response parser) and 12 offline tests are complete. The next missing step is a Testcontainers-backed mock HTTP contract suite that exercises the real transport against a Yahoo-shaped server. Phase closure still requires live Yahoo verification once the refresh workflow exists to consume the adapter and persist snapshots. Runtime signal reads will use persisted snapshots, not synchronous Yahoo calls.
+Partially complete. The adapter's offline seams (request factory, transport interface, response parser), 12 offline tests, and a 17-scenario WireMock.Net contract suite exercising the real `YahooFinanceHttpTransport` over real TCP are done. The contract suite uses an in-process `WireMockServer` with deterministic Yahoo-shaped JSON fixtures — no network access required. Phase closure still requires live Yahoo verification once the refresh workflow exists to consume the adapter and persist snapshots. Runtime signal reads will use persisted snapshots, not synchronous Yahoo calls. The WireMock fixture may migrate from in-process to `WireMock.Net.Testcontainers` as part of Phase 11's Testcontainers unification.
 
-**Deliverables:** Mock-container contract tests for the real HTTP transport, verified live transport for the refresh workflow, async transport support if needed, and a network-enabled smoke validation proving the refresh workflow persists a valid snapshot with real Yahoo data.
+**Deliverables:** ~~Mock-container contract tests for the real HTTP transport~~ ✅, verified live transport for the refresh workflow, async transport support if needed, and a network-enabled smoke validation proving the refresh workflow persists a valid snapshot with real Yahoo data.
 
 ### Phase 10: Market Data Persistence
 
@@ -423,7 +423,7 @@ PostgreSQL-backed immutable snapshot persistence for market-data refresh output.
 
 Replace InMemory and hardcoded-localhost database tests with Testcontainers for PostgreSQL. A shared xUnit collection fixture starts one `postgres:16-alpine` container per test run, applies the EF Core migration, and provides isolated `AppDbContext` instances to all persistence tests. Validates real PostgreSQL behavior (check constraints, unique indexes, cascade deletes, type mappings) that InMemory cannot enforce.
 
-**Deliverables:** `PostgresContainerFixture` with migration and table truncation; all persistence service, read service, model, and DI tests running against real PostgreSQL; `Microsoft.EntityFrameworkCore.InMemory` package removed.
+**Deliverables:** `PostgresContainerFixture` with migration and table truncation; all persistence service, read service, model, and DI tests running against real PostgreSQL; `Microsoft.EntityFrameworkCore.InMemory` package removed; optional migration of Yahoo Finance contract suite from in-process `WireMock.Net` to `WireMock.Net.Testcontainers` for Testcontainers consistency (see `docs/reviews/yahoo-finance-adapter-testcontainers-fixes.md`).
 
 ### Phase 12: REST API Endpoints
 
@@ -443,6 +443,7 @@ Minimal ASP.NET Core Web API for signal retrieval over HTTP. Thin read layer ove
 - **System.CommandLine** — CLI argument parsing
 - **Microsoft.Extensions.Logging** — structured console logging
 - **Npgsql.EntityFrameworkCore.PostgreSQL** — EF Core provider for PostgreSQL market-data persistence
+- **WireMock.Net** — in-process HTTP stub server for Yahoo Finance contract tests (test-only dependency); may migrate to `WireMock.Net.Testcontainers` in Phase 11
 - **Testcontainers.PostgreSql** — ephemeral PostgreSQL containers for integration tests (test-only dependency)
 
 ### Key Constraints
