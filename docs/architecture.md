@@ -10,7 +10,7 @@ The codebase is organized into five projects following a simplified layered arch
 
 - **Domain** — enums, signal models, computation logic, service interfaces
 - **Infrastructure** — file I/O, Yahoo Finance adapter, config parsing, PostgreSQL persistence
-- **Application** — pipeline orchestration, output rendering, signal serialization
+- **Application** — pipeline orchestration, signal run execution service, output rendering, signal serialization
 - **CLI** — entry point, command parsing, dependency wiring
 - **Api** — minimal ASP.NET Core Web API for signal retrieval over HTTP
 
@@ -18,7 +18,7 @@ The codebase is organized into five projects following a simplified layered arch
 flowchart TD
     CLI["CLI\nProgram.cs, Handlers"]
     API["Api\nApiHost, SignalsFileReader"]
-    APP["Application\nSignalPipeline, OutputRenderer,\nSignalsJsonSerializer"]
+    APP["Application\nSignalRunExecutionService, SignalPipeline,\nOutputRenderer, SignalsJsonSerializer"]
     INFRA["Infrastructure\nYamlConfigLoader, JsonStateStore,\nJsonlAuditWriter, EarningsCalendarFile,\nYahooFinanceAdapter, Persistence"]
     DB[("PostgreSQL\nmarket_data_*, signal_run*,\ntrade_governor_state")]
     DOMAIN["Domain\nEarningsGate, TechnicalScorer,\nTradeGovernor, Models, Interfaces"]
@@ -28,6 +28,7 @@ flowchart TD
     API --> APP
     API --> INFRA
     APP --> DOMAIN
+    APP --> INFRA
     INFRA -.->|implements| DOMAIN
     INFRA --> DB
 ```
@@ -109,14 +110,15 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 
 ### Application Layer
 
+- `SignalRunExecutionService` — shared entry point for running the signal pipeline regardless of trigger source (API, worker, CLI). Constructs domain services, executes the pipeline via `SignalPipeline`, persists results to PostgreSQL via `SignalRunPersistenceService`, writes audit JSONL, writes file output (write-behind), and returns a structured `SignalRunExecutionResult`. Provides `RunRealtime`, `RunAsOf`, and `RunRange` methods behind the `ISignalRunExecutionService` interface. Uses per-mode `SemaphoreSlim` concurrency guards (`LiveSemaphore` for realtime, `SimulationSemaphore` for as-of/range) to serialize runs and prevent governor state corruption. Records wall-clock timestamps (`DateTimeOffset.UtcNow`) for run metadata.
 - `SignalPipeline` — orchestrates the three-service pipeline: earnings gate, technical scorer, trade governor. Normalizes the watchlist (trim, uppercase) and deduplicates tickers before passing them to services. Single method: `Run(watchlist, clock) -> List<FinalSignal>`.
 - `OutputRenderer` — formats and writes `signals.txt` and `signals.json`. Single implementation shared by all commands. Uses plain enum strings (`"BUY"`) in JSON output and prefixed strings (`"Action.BUY"`) in text output. `JsonlAuditWriter` uses the same prefixed format (`"Action.BUY"`, `"NewsState.TRADE_OK"`) in audit JSONL output.
 - `SignalsJsonSerializer` — shared JSON serialization for `signals.json`. Converts `FinalSignal` domain objects to/from `SignalFileEntry` records using `JsonSerializerDefaults.Web` (camelCase). Used by both `OutputRenderer` (write) and the API (read). Exposes `JsonOptions` for explicit use by API endpoints.
 
 ### CLI Layer
 
-- `Program.cs` — entry point. Parses commands and arguments, wires dependencies, delegates to the appropriate command handler.
-- One handler class per command: `CheckCalendarHandler`, `StatsPeriodsHandler`, `RunAsOfHandler`, `RunRealtimeHandler`, `RunRangeHandler`.
+- `Program.cs` — entry point. Parses commands and arguments, wires dependencies (including `SignalRunExecutionService` with persistence and governor state store from DI), delegates to the appropriate command handler.
+- One handler class per command: `CheckCalendarHandler`, `StatsPeriodsHandler`, `RunAsOfHandler`, `RunRealtimeHandler`, `RunRangeHandler`. The run handlers are thin wrappers that delegate to `ISignalRunExecutionService` and map the result status to exit codes.
 
 ### Api Layer
 
@@ -129,6 +131,7 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 ```mermaid
 flowchart TD
     CONFIG["config.yaml"] --> CLI["CLI Handler"]
+    CONFIG --> EXEC
     CALENDAR["earnings_calendar.json"] --> EG
     YAHOO_E["Yahoo Finance<br>(earnings fallback)"] -.-> EG
     YAHOO_P["Yahoo Finance\n(daily prices)"] -.-> REFRESH["Refresh Worker"]
@@ -138,17 +141,19 @@ flowchart TD
     READ --> PROVIDER["Snapshot MarketDataProvider"]
     PROVIDER --> TS
 
-    CLI --> EG["EarningsGate.Check\n(watchlist, clock)"]
-    CLI --> TS["TechnicalScorer.Score\n(watchlist, clock)"]
+    CLI --> EXEC["SignalRunExecutionService\n(Application layer)"]
+    EXEC --> EG["EarningsGate.Check\n(watchlist, clock)"]
+    EXEC --> TS["TechnicalScorer.Score\n(watchlist, clock)"]
 
     EG -->|"List&lt;NewsSignal&gt;"| TG["TradeGovernor.Decide\n(news, market, clock)"]
     TS -->|"List&lt;MarketSignal&gt;"| TG
 
-    STATE["state.json /\ntrade_governor_state"] <--> TG
+    STATE["trade_governor_state"] <--> TG
 
-    TG -->|"List&lt;FinalSignal&gt;"| OR["OutputRenderer"]
-    TG -->|"List&lt;FinalSignal&gt;"| AW["AuditWriter"]
-    TG -->|"List&lt;FinalSignal&gt;"| SRP["SignalRunPersistenceService"]
+    TG -->|"List&lt;FinalSignal&gt;"| EXEC
+    EXEC --> OR["OutputRenderer"]
+    EXEC --> AW["AuditWriter"]
+    EXEC --> SRP["SignalRunPersistenceService"]
 
     OR --> TXT["signals.txt"]
     OR --> JSON["signals.json"]
@@ -364,7 +369,10 @@ BlowingCandles/
 │   ├── BlowingCandles.Application/
 │   │   ├── SignalPipeline.cs
 │   │   ├── OutputRenderer.cs
-│   │   └── SignalsJsonSerializer.cs
+│   │   ├── SignalsJsonSerializer.cs
+│   │   └── Services/
+│   │       ├── ISignalRunExecutionService.cs
+│   │       └── SignalRunExecutionService.cs
 │   ├── BlowingCandles.Api/
 │   │   ├── BlowingCandles.Api.csproj
 │   │   ├── Program.cs
@@ -378,7 +386,6 @@ BlowingCandles/
 │       └── Handlers/
 │           ├── CheckCalendarHandler.cs
 │           ├── StatsPeriodsHandler.cs
-│           ├── RunCommandSupport.cs
 │           ├── RunAsOfHandler.cs
 │           ├── RunRealtimeHandler.cs
 │           └── RunRangeHandler.cs

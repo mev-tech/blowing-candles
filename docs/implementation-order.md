@@ -287,6 +287,7 @@ The following decisions should be made before or during the indicated phase:
 | Signal run persistence model | 13 ✅ | Immutable signal runs with deduplicated results; DB-backed governor state with mode isolation; `SignalRunPersistenceService` and `SignalRunReadService`; `TradeGovernorDbStateStore` implementing `ITradeGovernorStateStore` |
 | Signal run ticker deduplication | 13 ✅ | Last-wins deduplication consistent with `MarketDataSnapshotPersistenceService` quote deduplication; `TickerCount` reflects deduplicated count |
 | Trade governor DB state store | 13 ✅ | Upsert pattern with concurrent-insert race handling; strict mode validation (`"live"` / `"simulation"`); day-reset matching `JsonStateStore` behavior |
+| Shared execution service | Step 2 ✅ | `SignalRunExecutionService` in Application layer; wall-clock run timestamps; per-mode `SemaphoreSlim` concurrency; `RunCommandSupport` deleted; CLI handlers as thin wrappers |
 
 ## API-First Execution Plan
 
@@ -296,9 +297,21 @@ The following steps transform the application from a CLI-first tool into a long-
 
 PostgreSQL tables for persisting signal pipeline results, trade governor state, and signal run metadata. Foundation for all subsequent steps.
 
-### Step 2: Shared Execution Service ← NEXT
+### Step 2: Shared Execution Service ✅
 
-Extract orchestration from `RunCommandSupport.cs` and CLI handlers into `SignalRunExecutionService` in the Application layer. Single entry point for running the signal pipeline regardless of trigger source (API, worker, CLI). Executes pipeline, persists results to PostgreSQL, writes audit, returns structured result. Concurrency guard via `SemaphoreSlim` per isolation mode.
+**Status: COMPLETED**
+
+**What was built:**
+- `ISignalRunExecutionService` interface and `SignalRunExecutionService` implementation in the Application layer (`src/BlowingCandles.Application/Services/`) as the single entry point for realtime, as-of, and range signal pipeline runs regardless of trigger source (API, worker, CLI)
+- Shared orchestration: pipeline execution → PostgreSQL run persistence via `SignalRunPersistenceService` → audit JSONL writes → file write-behind artifact output (signals.txt, signals.json)
+- Structured `SignalRunExecutionResult` record returned to callers with run ID, status, signals, timestamps, and error message
+- Live vs simulation isolation via per-mode `SemaphoreSlim` concurrency guards (`LiveSemaphore`, `SimulationSemaphore`) and mode-specific governor state, audit, and output paths
+- `RunCommandSupport.cs` deleted; path-building helpers (`ResolveAuditPath`, `BuildSimulationAuditPath`, `BuildSimulationOutputPath`) moved into the execution service as private static methods
+- CLI handlers (`RunRealtimeHandler`, `RunAsOfHandler`, `RunRangeHandler`) migrated to thin wrappers delegating to `ISignalRunExecutionService`
+- `BlowingCandles.Application` project now references `BlowingCandles.Infrastructure` for persistence, audit, clock, calendar, and config types
+- Wall-clock timestamps (`DateTimeOffset.UtcNow`) for run metadata (`StartedAtUtc`, `CompletedAtUtc`); domain `IClock` used only for pipeline execution
+
+**Validation:** `SignalRunExecutionServiceTests` covering successful realtime/as-of/range runs, empty watchlist, pipeline failure with failed-run persistence, persistence failure with best-effort file write-behind, concurrent live run serialization, and cross-mode independence (simulation does not block live). `RunCommandHandlerTests` verifying thin handler delegation and exit code mapping. All 20 tests pass, solution builds with zero warnings.
 
 **Feature spec:** `docs/features/signal-run-execution-service.md`
 

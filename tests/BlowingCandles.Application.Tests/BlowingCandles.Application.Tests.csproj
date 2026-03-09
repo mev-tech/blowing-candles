@@ -23,6 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\BlowingCandles.Application\BlowingCandles.Application.csproj" />
     <ProjectReference Include="..\..\src\BlowingCandles.Domain\BlowingCandles.Domain.csproj" />
+    <ProjectReference Include="..\..\src\BlowingCandles.Infrastructure\BlowingCandles.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
