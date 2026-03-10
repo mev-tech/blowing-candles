@@ -4,13 +4,13 @@
 
 The C# application is a synchronous, single-process CLI that generates manual trading signals for a small equity watchlist. It replaces the Python `signals-bot` with identical behavior and cleaner structure.
 
-The system follows a pipeline architecture: configuration flows in, three domain services execute in sequence (earnings gate, technical scoring, trade governance), and results flow out to files. A minimal REST API provides HTTP access to the generated signals. Each CLI invocation runs to completion and exits; the API runs as a long-lived process serving the latest `signals.json` on demand.
+The system follows a pipeline architecture: configuration flows in, three domain services execute in sequence (earnings gate, technical scoring, trade governance), and results are persisted to PostgreSQL. A minimal REST API provides HTTP access to the generated signals. Each CLI invocation runs to completion and exits; the API runs as a long-lived process serving signals from PostgreSQL on demand.
 
 The codebase is organized into five projects following a simplified layered architecture:
 
 - **Domain** — enums, signal models, computation logic, service interfaces
 - **Infrastructure** — file I/O, Yahoo Finance adapter, config parsing, PostgreSQL persistence
-- **Application** — pipeline orchestration, signal run execution service, output rendering, signal serialization
+- **Application** — pipeline orchestration, signal run execution service, signal serialization
 - **CLI** — entry point, command parsing, dependency wiring
 - **Api** — minimal ASP.NET Core Web API for signal retrieval over HTTP, with optional background worker for scheduled signal generation
 
@@ -18,8 +18,8 @@ The codebase is organized into five projects following a simplified layered arch
 flowchart TD
     CLI["CLI\nProgram.cs, Handlers"]
     API["Api\nApiHost, SignalRunReadService,\nISignalRunExecutionService,\nSignalGenerationWorker"]
-    APP["Application\nSignalRunExecutionService, SignalPipeline,\nOutputRenderer, SignalsJsonSerializer"]
-    INFRA["Infrastructure\nYamlConfigLoader, JsonStateStore,\nJsonlAuditWriter, EarningsCalendarFile,\nYahooFinanceAdapter, Persistence"]
+    APP["Application\nSignalRunExecutionService, SignalPipeline,\nSignalsJsonSerializer"]
+    INFRA["Infrastructure\nYamlConfigLoader,\nJsonlAuditWriter, EarningsCalendarFile,\nYahooFinanceAdapter, Persistence"]
     DB[("PostgreSQL\nmarket_data_*, signal_run*,\ntrade_governor_state")]
     DOMAIN["Domain\nEarningsGate, TechnicalScorer,\nTradeGovernor, Models, Interfaces"]
 
@@ -80,7 +80,7 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 - `IEarningsCalendar` — load and query earnings dates from the local calendar.
 - `IMarketDataProvider` — retrieve daily OHLCV price history for a ticker.
 - `IClock` — provides current UTC time; injectable for deterministic testing and as-of simulation.
-- `ITradeGovernorStateStore` — load and save trade governor state (buy count, last buy timestamp). Implemented by `JsonStateStore` (file-backed) and `TradeGovernorDbStateStore` (PostgreSQL-backed).
+- `ITradeGovernorStateStore` — load and save trade governor state (buy count, last buy timestamp). Implemented by `TradeGovernorDbStateStore` (PostgreSQL-backed). The CLI also uses `TradeGovernorDbStateStore` via DI.
 
 **Domain Services**
 
@@ -91,7 +91,6 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 ### Infrastructure Layer
 
 - `YamlConfigLoader` — parses `config.yaml` into a strongly-typed `AppConfig` object.
-- `JsonStateStore` — reads/writes `state.json` (fields: `day`, `buys_today`, `last_buy_at`). Auto-resets on day change. Silently resets on corruption or missing file. Implements `ITradeGovernorStateStore`.
 - `JsonlAuditWriter` — appends JSONL rows to the audit log. Append-only, never truncates.
 - `JsonlAuditReader` — reads and parses JSONL audit files for stats-periods analysis.
 - `EarningsCalendarFile` — implements `IEarningsCalendar` by loading `earnings_calendar.json`.
@@ -102,7 +101,7 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 - `LiveSnapshotMarketDataProvider` / `HistoricalSnapshotMarketDataProvider` — implement `IMarketDataProvider` by reading from persisted snapshots via the read service.
 - `SignalRunPersistenceService` — persists signal pipeline execution results. Validates failed-run requests, normalizes and deduplicates tickers (last wins), truncates reasons, writes run + results + governor state in a single transaction, and marks runs failed on rollback (best-effort).
 - `SignalRunReadService` — reads signal run results from PostgreSQL. Supports latest live run (most recent completed non-simulation), run by ID, and recent runs (capped at 100). Eager-loads results sorted by ticker.
-- `TradeGovernorDbStateStore` — implements `ITradeGovernorStateStore` backed by PostgreSQL. Upserts a single row per mode (`"live"` or `"simulation"`) with day-reset logic matching `JsonStateStore`. Handles concurrent-insert races via retry on unique constraint violation.
+- `TradeGovernorDbStateStore` — implements `ITradeGovernorStateStore` backed by PostgreSQL. Upserts a single row per mode (`"live"` or `"simulation"`) with day-reset logic. Handles concurrent-insert races via retry on unique constraint violation.
 - `TradeGovernorDbStateStoreFactory` — creates `TradeGovernorDbStateStore` instances with a specific mode. Registered in DI for mode-parameterized construction.
 - `DependencyInjection.AddPersistence` — registers `AppDbContext` with `UseNpgsql`, binds `PersistenceOptions` from configuration, adds `PostgreSqlHealthCheck`, and registers `SignalRunPersistenceService`, `SignalRunReadService`, and `TradeGovernorDbStateStoreFactory`.
 - `PersistenceOptions` — configuration options for command timeout, detailed errors, and sensitive data logging.
@@ -110,10 +109,9 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 
 ### Application Layer
 
-- `SignalRunExecutionService` — shared entry point for running the signal pipeline regardless of trigger source (API, worker, CLI). Constructs domain services, executes the pipeline via `SignalPipeline`, persists results to PostgreSQL via `SignalRunPersistenceService`, writes audit JSONL, writes file output (write-behind), and returns a structured `SignalRunExecutionResult`. Provides `RunRealtime`, `RunAsOf`, and `RunRange` methods behind the `ISignalRunExecutionService` interface. Uses per-mode `SemaphoreSlim` concurrency guards (`LiveSemaphore` for realtime, `SimulationSemaphore` for as-of/range) to serialize runs and prevent governor state corruption. Records wall-clock timestamps (`DateTimeOffset.UtcNow`) for run metadata.
+- `SignalRunExecutionService` — shared entry point for running the signal pipeline regardless of trigger source (API, worker, CLI). Constructs domain services, executes the pipeline via `SignalPipeline`, persists results to PostgreSQL via `SignalRunPersistenceService`, and returns a structured `SignalRunExecutionResult`. Provides `RunRealtime`, `RunAsOf`, and `RunRange` methods behind the `ISignalRunExecutionService` interface. Uses per-mode `SemaphoreSlim` concurrency guards (`LiveSemaphore` for realtime, `SimulationSemaphore` for as-of/range) to serialize runs and prevent governor state corruption. Records wall-clock timestamps (`DateTimeOffset.UtcNow`) for run metadata.
 - `SignalPipeline` — orchestrates the three-service pipeline: earnings gate, technical scorer, trade governor. Normalizes the watchlist (trim, uppercase) and deduplicates tickers before passing them to services. Single method: `Run(watchlist, clock) -> List<FinalSignal>`.
-- `OutputRenderer` — formats and writes `signals.txt` and `signals.json`. Single implementation shared by all commands. Uses plain enum strings (`"BUY"`) in JSON output and prefixed strings (`"Action.BUY"`) in text output. `JsonlAuditWriter` uses the same prefixed format (`"Action.BUY"`, `"NewsState.TRADE_OK"`) in audit JSONL output.
-- `SignalsJsonSerializer` — shared JSON serialization for `signals.json`. Converts `FinalSignal` domain objects to/from `SignalFileEntry` records using `JsonSerializerDefaults.Web` (camelCase). Used by both `OutputRenderer` (write) and the API (read). Exposes `JsonOptions` for explicit use by API endpoints.
+- `SignalsJsonSerializer` — shared JSON serialization for signal results. Converts `FinalSignal` domain objects to/from `SignalFileEntry` records using `JsonSerializerDefaults.Web` (camelCase). Used by the API and cross-validation tests for JSON serialization. Exposes `JsonOptions` for explicit use by API endpoints.
 
 ### CLI Layer
 
@@ -136,7 +134,6 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
 - All endpoints use `SignalsJsonSerializer.JsonOptions` (camelCase, `JsonStringEnumConverter`) for consistent serialization.
 - Read and write endpoints return 503 on infrastructure failures (DB unavailable, execution service errors).
 - `SignalGenerationWorker` — `BackgroundService` that runs signal generation on a configurable interval. Calls `ISignalRunExecutionService.RunRealtime("worker")` on each tick. Disabled by default; enabled via `Worker:Enabled` in `appsettings.json`. Uses `IServiceScopeFactory` to create a fresh scope per run. Shares `LiveSemaphore` concurrency with API-triggered realtime runs. Configuration via `WorkerOptions` (`Enabled`, `IntervalMinutes`).
-- `SignalsFileReader` — remains in the codebase but is no longer wired into endpoints (removal deferred to Step 5).
 
 ## Data Flow
 
@@ -163,13 +160,8 @@ flowchart TD
     STATE["trade_governor_state"] <--> TG
 
     TG -->|"List&lt;FinalSignal&gt;"| EXEC
-    EXEC --> OR["OutputRenderer"]
-    EXEC --> AW["AuditWriter"]
     EXEC --> SRP["SignalRunPersistenceService"]
 
-    OR --> TXT["signals.txt"]
-    OR --> JSON["signals.json"]
-    AW --> JSONL["logs/decisions.jsonl"]
     SRP --> PG_SIG[("PostgreSQL\nsignal_run*,\ntrade_governor_state")]
 
     PG_SIG --> SRR["SignalRunReadService"]
@@ -195,39 +187,19 @@ news:
 policy:
   max_buys_per_day: 99999999  # sample value; code default when omitted is int.MaxValue
   cooldown_minutes: 0
-output:
-  text_file: signals.txt
-  json_file: signals.json
-state:
-  path: data/state.json
-audit:
-  jsonl_path: logs/decisions.jsonl
 ```
 
 Loaded once at startup into a strongly-typed `AppConfig` record. No hot-reload, no environment variable overrides. The `max_buys_per_day` value above is a sample; when the field is omitted from config, the code defaults to `int.MaxValue` (effectively unlimited).
 
 ### State
 
-`JsonStateStore` manages a single JSON file:
-
-```json
-{ "day": "2026-03-07", "buys_today": 1, "last_buy_at": "2026-03-07T14:30:00Z" }
-```
-
-Behavior:
-- On load, compares `day` against the current date from `IClock`. If different, resets `buys_today` to 0 and clears `last_buy_at`.
-- Corrupted or missing files silently reset to empty state (day=today, buys=0, no last_buy).
-- Live and simulation modes use separate state files. Simulation never touches live state.
-
-**Decision: state reset clock.** The Python implementation uses the real UTC clock for day-reset even during simulation. The C# implementation will use `IClock`, which means simulation mode will use `as_of` for day-reset. This fixes the Python bug and may produce different buy counts during backtests compared to the Python version. This is an accepted divergence.
+Trade governor state is managed by `TradeGovernorDbStateStore` in PostgreSQL. A single row per mode (`"live"` or `"simulation"`) tracks buy count and last buy timestamp. State automatically resets at day boundaries using `IClock` (wall-clock UTC for live runs, fixed datetime for simulations). Per-mode isolation ensures live and simulation runs do not interfere with each other's governor state.
 
 ### Live vs Simulation Isolation
 
 | Concern | Live | Simulation |
 |---------|------|------------|
-| State file | `data/state.json` | `data/sim_state.json` (or custom path) |
-| Audit file | `logs/decisions.jsonl` | `logs/sim_decisions.jsonl` (or custom path) |
-| Output files | `signals.txt`, `signals.json` | `asof_{date}.signals.txt`, `asof_{date}.signals.json` |
+| Governor state | PostgreSQL row with mode `"live"` | PostgreSQL row with mode `"simulation"` |
 | Clock | Wall-clock UTC | Fixed `as_of` datetime |
 
 ## Logging and Error Handling
@@ -241,7 +213,6 @@ Behavior:
 | EarningsGate | Any exception during calendar lookup or Yahoo fallback | WAIT with reason `DATA_ERROR` |
 | TechnicalScorer | Any exception during price download or calculation | WAIT with reason `MARKET_DATA_ERROR` |
 | TradeGovernor | Missing or stale news signal for a ticker | WAIT with reason `NO_NEWS_STATE` or `DATA_STALE` |
-| JsonStateStore | Corrupt or missing file | Silent reset to empty state |
 
 No retry logic. If Yahoo Finance fails, the ticker gets WAIT for that run.
 
@@ -323,8 +294,6 @@ BlowingCandles/
 │   │   ├── Clock/
 │   │   │   ├── SystemClock.cs
 │   │   │   └── FixedClock.cs
-│   │   ├── State/
-│   │   │   └── JsonStateStore.cs
 │   │   ├── Audit/
 │   │   │   ├── JsonlAuditWriter.cs
 │   │   │   ├── JsonlAuditReader.cs
@@ -383,7 +352,6 @@ BlowingCandles/
 │   │           └── AddSignalRunPersistence.cs
 │   ├── BlowingCandles.Application/
 │   │   ├── SignalPipeline.cs
-│   │   ├── OutputRenderer.cs
 │   │   ├── SignalsJsonSerializer.cs
 │   │   └── Services/
 │   │       ├── ISignalRunExecutionService.cs
@@ -394,8 +362,6 @@ BlowingCandles/
 │   │   ├── ApiHost.cs
 │   │   ├── WorkerOptions.cs
 │   │   ├── appsettings.json
-│   │   ├── Services/
-│   │   │   └── SignalsFileReader.cs
 │   │   └── Workers/
 │   │       └── SignalGenerationWorker.cs
 │   └── BlowingCandles.Cli/
@@ -414,7 +380,8 @@ BlowingCandles/
 │   ├── BlowingCandles.Application.Tests/
 │   ├── BlowingCandles.Api.Tests/
 │   │   ├── BlowingCandles.Api.Tests.csproj
-│   │   └── SignalsEndpointTests.cs
+│   │   ├── SignalsEndpointTests.cs
+│   │   └── SignalGenerationWorkerTests.cs
 │   ├── BlowingCandles.CrossValidation.Tests/
 │   │   ├── FixtureMarketDataProvider.cs
 │   │   ├── ComparisonHelpers.cs
@@ -500,9 +467,9 @@ Replace InMemory and hardcoded-localhost database tests with Testcontainers for 
 
 ### Phase 12: REST API Endpoints
 
-Minimal ASP.NET Core Web API for signal retrieval over HTTP. Thin read layer over existing pipeline output. `BlowingCandles.Api` project with `ApiHost`, `SignalsFileReader`, shared `SignalsJsonSerializer`, Docker `api` entrypoint, and integration tests.
+Minimal ASP.NET Core Web API for signal retrieval over HTTP. Thin read layer over PostgreSQL persistence. `BlowingCandles.Api` project with `ApiHost`, shared `SignalsJsonSerializer`, Docker `api` entrypoint, and integration tests.
 
-**Deliverables:** `GET /api/signals` and `GET /api/signals/{ticker}` endpoints; `SignalsFileReader` with result-type error handling; `SignalsJsonSerializer` shared between `OutputRenderer` and API; Docker `api` entrypoint; integration tests covering all HTTP status codes and edge cases. ✅
+**Deliverables:** `GET /api/signals` and `GET /api/signals/{ticker}` endpoints; `SignalsJsonSerializer` for JSON serialization; Docker `api` entrypoint; integration tests covering all HTTP status codes and edge cases. ✅
 
 ## Codex Starting Brief
 
@@ -527,7 +494,7 @@ Minimal ASP.NET Core Web API for signal retrieval over HTTP. Thin read layer ove
 3. No dependency injection container. Manual wiring in `Program.cs`.
 4. Tickers are always processed in alphabetical order by the trade governor.
 5. Every catch block in domain services must produce WAIT. No exception may result in BUY or SELL.
-6. Audit JSONL uses prefixed enum strings (`"Action.BUY"`). `signals.json` uses plain strings (`"BUY"`).
+6. Audit JSONL uses prefixed enum strings (`"Action.BUY"`). API JSON responses (via `SignalsJsonSerializer`) use plain strings (`"BUY"`).
 7. State file uses `IClock` for day-reset (diverges from Python's real-clock behavior in simulation).
 
 ### What Not to Build

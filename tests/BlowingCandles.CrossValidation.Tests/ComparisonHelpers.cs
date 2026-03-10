@@ -4,28 +4,28 @@ namespace BlowingCandles.CrossValidation.Tests;
 
 public static class ComparisonHelpers
 {
-    public static void AssertTextMatches(string expectedPath, string actualPath)
+    public static void AssertTextContentMatches(string expectedPath, string actualText)
     {
         Assert.True(File.Exists(expectedPath), $"Golden file not found: {expectedPath}");
-        Assert.Equal(ReadNormalizedLines(expectedPath), ReadNormalizedLines(actualPath));
+        Assert.Equal(ReadNormalizedLines(expectedPath), ReadNormalizedLinesFromContent(actualText));
     }
 
-    public static void AssertJsonMatches(string expectedPath, string actualPath)
+    public static void AssertJsonContentMatches(string expectedPath, string actualJson)
     {
         Assert.True(File.Exists(expectedPath), $"Golden file not found: {expectedPath}");
         using var expectedDocument = JsonDocument.Parse(File.ReadAllText(expectedPath));
-        using var actualDocument = JsonDocument.Parse(File.ReadAllText(actualPath));
+        using var actualDocument = JsonDocument.Parse(actualJson);
 
         Assert.Equal(
             Canonicalize(expectedDocument.RootElement),
             Canonicalize(actualDocument.RootElement));
     }
 
-    public static void AssertJsonlMatches(string expectedPath, string actualPath)
+    public static void AssertJsonlContentMatches(string expectedPath, string actualJsonl)
     {
         Assert.True(File.Exists(expectedPath), $"Golden file not found: {expectedPath}");
         var expectedLines = ReadNormalizedLines(expectedPath);
-        var actualLines = ReadNormalizedLines(actualPath);
+        var actualLines = ReadNormalizedLinesFromContent(actualJsonl);
 
         Assert.Equal(expectedLines.Length, actualLines.Length);
 
@@ -45,6 +45,20 @@ public static class ComparisonHelpers
         return File.Exists(path)
             ? File.ReadAllLines(path).Select(line => line.TrimEnd('\r')).ToArray()
             : Array.Empty<string>();
+    }
+
+    private static string[] ReadNormalizedLinesFromContent(string content)
+    {
+        if (string.IsNullOrEmpty(content))
+        {
+            return Array.Empty<string>();
+        }
+
+        return content
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n')
+            .Select(line => line.TrimEnd('\r'))
+            .ToArray();
     }
 
     private static string Canonicalize(JsonElement element)

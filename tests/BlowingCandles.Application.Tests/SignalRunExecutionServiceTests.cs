@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Text.Json;
 using BlowingCandles.Application.Services;
 using BlowingCandles.Domain.Interfaces;
 using BlowingCandles.Domain.Models;
@@ -30,7 +29,7 @@ public sealed class SignalRunExecutionServiceTests : IDisposable
     }
 
     [Fact]
-    public void RunAsOf_WritesSimulationArtifacts_PersistsSimulationRun_AndLeavesLivePathsUntouched()
+    public void RunAsOf_PersistsSimulationRun()
     {
         var asOfDate = new DateOnly(2026, 1, 15);
         var config = CreateConfig(["AAPL"], maxBuysPerDay: 5);
@@ -59,40 +58,11 @@ public sealed class SignalRunExecutionServiceTests : IDisposable
         var result = service.RunAsOf("cli", asOfDate);
         var after = DateTimeOffset.UtcNow;
 
-        var textPath = GetPath("output/asof_2026-01-15.signals.txt");
-        var jsonPath = GetPath("output/asof_2026-01-15.signals.json");
-        var simAuditPath = GetPath("logs/sim_decisions.jsonl");
-
         Assert.Equal(SignalRunStatus.Completed, result.Status);
         Assert.Equal(41L, result.RunId);
         Assert.True(result.IsSimulation);
         Assert.Equal(SignalRunType.AsOf, result.RunType);
         Assert.Equal(1, result.TickerCount);
-        Assert.True(File.Exists(textPath));
-        Assert.True(File.Exists(jsonPath));
-        Assert.True(File.Exists(simAuditPath));
-        Assert.False(File.Exists(GetPath("output/live.signals.txt")));
-        Assert.False(File.Exists(GetPath("output/live.signals.json")));
-        Assert.False(File.Exists(GetPath("logs/decisions.jsonl")));
-        Assert.False(File.Exists(GetPath("data/state.json")));
-
-        Assert.Equal(
-            "AAPL: Action.BUY | NewsState.TRADE_OK | Action.BUY | ABOVE_SMA50,ABOVE_SMA200,GOLDEN_CROSS,RSI_OVERSOLD",
-            File.ReadAllText(textPath).Trim());
-
-        using (var doc = JsonDocument.Parse(File.ReadAllText(jsonPath)))
-        {
-            var signal = Assert.Single(doc.RootElement.EnumerateArray());
-            Assert.Equal("2026-01-15T00:00:00+00:00", signal.GetProperty("timestamp").GetString());
-        }
-
-        var auditLines = File.ReadAllLines(simAuditPath);
-        Assert.Single(auditLines);
-        using (var doc = JsonDocument.Parse(auditLines[0]))
-        {
-            Assert.Equal("AAPL", doc.RootElement.GetProperty("ticker").GetString());
-            Assert.Equal("2026-01-15T00:00:00+00:00", doc.RootElement.GetProperty("timestamp").GetString());
-        }
 
         var request = Assert.Single(persistRequests);
         Assert.Equal(SignalRunType.AsOf, request.RunType);
@@ -107,7 +77,7 @@ public sealed class SignalRunExecutionServiceTests : IDisposable
     }
 
     [Fact]
-    public void RunRealtime_WritesLiveArtifacts_AndPersistsLiveRun()
+    public void RunRealtime_PersistsLiveRun()
     {
         var now = new DateTimeOffset(2026, 3, 7, 14, 30, 0, TimeSpan.Zero);
         var asOfDate = DateOnly.FromDateTime(now.UtcDateTime);
@@ -142,11 +112,6 @@ public sealed class SignalRunExecutionServiceTests : IDisposable
         Assert.Equal(7L, result.RunId);
         Assert.False(result.IsSimulation);
         Assert.Equal(asOfDate, result.AsOfDate);
-        Assert.True(File.Exists(GetPath("output/live.signals.txt")));
-        Assert.True(File.Exists(GetPath("output/live.signals.json")));
-        Assert.True(File.Exists(GetPath("logs/decisions.jsonl")));
-        Assert.False(File.Exists(GetPath("logs/sim_decisions.jsonl")));
-        Assert.False(File.Exists(GetPath("data/state.json")));
 
         var request = Assert.Single(persistRequests);
         Assert.Equal(SignalRunType.Realtime, request.RunType);
@@ -161,7 +126,7 @@ public sealed class SignalRunExecutionServiceTests : IDisposable
     }
 
     [Fact]
-    public void RunRange_UsesSharedSimulationStateAcrossDays_AndWritesPerDayOutputs()
+    public void RunRange_UsesSharedSimulationStateAcrossDays()
     {
         var startDate = new DateOnly(2026, 1, 15);
         var endDate = new DateOnly(2026, 1, 16);
@@ -195,25 +160,6 @@ public sealed class SignalRunExecutionServiceTests : IDisposable
 
         Assert.Equal(2, results.Count);
         Assert.All(results, result => Assert.Equal(SignalRunStatus.Completed, result.Status));
-        Assert.True(File.Exists(GetPath("output/asof_2026-01-15.signals.txt")));
-        Assert.True(File.Exists(GetPath("output/asof_2026-01-15.signals.json")));
-        Assert.True(File.Exists(GetPath("output/asof_2026-01-16.signals.txt")));
-        Assert.True(File.Exists(GetPath("output/asof_2026-01-16.signals.json")));
-        Assert.True(File.Exists(GetPath("logs/sim_decisions.jsonl")));
-        Assert.False(File.Exists(GetPath("data/sim_state.json")));
-
-        Assert.Equal(
-            """
-            AAPL: Action.BUY | NewsState.TRADE_OK | Action.BUY | ABOVE_SMA50,ABOVE_SMA200,GOLDEN_CROSS,RSI_OVERSOLD
-            MSFT: Action.WAIT | NewsState.TRADE_OK | Action.BUY | MAX_BUYS_REACHED
-            """.Trim(),
-            File.ReadAllText(GetPath("output/asof_2026-01-15.signals.txt")).Trim());
-        Assert.Equal(
-            File.ReadAllText(GetPath("output/asof_2026-01-15.signals.txt")),
-            File.ReadAllText(GetPath("output/asof_2026-01-16.signals.txt")));
-
-        var auditLines = File.ReadAllLines(GetPath("logs/sim_decisions.jsonl"));
-        Assert.Equal(4, auditLines.Length);
         Assert.Equal(2, stateStore.SaveCount);
         Assert.Equal(["2026-01-15", "2026-01-16"], persistRequests.Select(x => x.GovernorState!.Day).ToArray());
         Assert.Equal(
@@ -229,7 +175,7 @@ public sealed class SignalRunExecutionServiceTests : IDisposable
     }
 
     [Fact]
-    public void RunRealtime_PipelineThrows_PersistsFailedRun_AndSkipsArtifacts()
+    public void RunRealtime_PipelineThrows_PersistsFailedRun()
     {
         var config = CreateConfig(["AAPL"], maxBuysPerDay: 5);
         var persistRequests = new List<PersistSignalRunRequest>();
@@ -252,9 +198,6 @@ public sealed class SignalRunExecutionServiceTests : IDisposable
         Assert.Equal(99L, result.RunId);
         Assert.Equal("calendar exploded", result.ErrorMessage);
         Assert.Empty(result.Signals);
-        Assert.False(File.Exists(GetPath("output/live.signals.txt")));
-        Assert.False(File.Exists(GetPath("output/live.signals.json")));
-        Assert.False(File.Exists(GetPath("logs/decisions.jsonl")));
 
         var request = Assert.Single(persistRequests);
         Assert.Equal(SignalRunType.Realtime, request.RunType);
@@ -266,7 +209,7 @@ public sealed class SignalRunExecutionServiceTests : IDisposable
     }
 
     [Fact]
-    public void RunRealtime_PersistenceFails_ReturnsFailedResult_AndStillWritesArtifacts()
+    public void RunRealtime_PersistenceFails_ReturnsFailedResult()
     {
         var now = new DateTimeOffset(2026, 3, 8, 12, 0, 0, TimeSpan.Zero);
         var config = CreateConfig(["AAPL"], maxBuysPerDay: 5);
@@ -292,9 +235,6 @@ public sealed class SignalRunExecutionServiceTests : IDisposable
         Assert.Equal(0L, result.RunId);
         Assert.Equal("db unavailable", result.ErrorMessage);
         Assert.Equal(1, result.TickerCount);
-        Assert.True(File.Exists(GetPath("output/live.signals.txt")));
-        Assert.True(File.Exists(GetPath("output/live.signals.json")));
-        Assert.True(File.Exists(GetPath("logs/decisions.jsonl")));
         AssertWallClockTimestamps(result.StartedAtUtc, result.CompletedAtUtc, before, after);
     }
 
@@ -326,12 +266,6 @@ public sealed class SignalRunExecutionServiceTests : IDisposable
         Assert.Equal(12L, result.RunId);
         Assert.Equal(0, result.TickerCount);
         Assert.Empty(result.Signals);
-        Assert.True(File.Exists(GetPath("output/live.signals.txt")));
-        Assert.True(File.Exists(GetPath("output/live.signals.json")));
-        Assert.True(File.Exists(GetPath("logs/decisions.jsonl")));
-        Assert.Equal(string.Empty, File.ReadAllText(GetPath("output/live.signals.txt")));
-        Assert.Equal("[]", File.ReadAllText(GetPath("output/live.signals.json")).Trim());
-        Assert.Equal(string.Empty, File.ReadAllText(GetPath("logs/decisions.jsonl")));
         Assert.Equal(0, stateStore.SaveCount);
         Assert.Empty(provider.PriceRequests);
 
@@ -488,20 +422,6 @@ public sealed class SignalRunExecutionServiceTests : IDisposable
             {
                 MaxBuysPerDay = maxBuysPerDay,
                 CooldownMinutes = 0
-            },
-            Output = new OutputConfig
-            {
-                TextFile = GetPath("output/live.signals.txt"),
-                JsonFile = GetPath("output/live.signals.json")
-            },
-            State = new StateConfig
-            {
-                Path = GetPath("data/state.json")
-            },
-            Audit = new AuditConfig
-            {
-                JsonlPath = "logs/decisions.jsonl",
-                ResolvedJsonlPath = GetPath("logs/decisions.jsonl")
             }
         };
     }
@@ -534,7 +454,6 @@ public sealed class SignalRunExecutionServiceTests : IDisposable
     {
         return new SignalRunExecutionService(
             config,
-            GetPath("config.yaml"),
             persistRun,
             governorStateStoreFactory,
             earningsCalendarFactory,

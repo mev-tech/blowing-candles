@@ -2,7 +2,6 @@ using System.Threading;
 using BlowingCandles.Domain.Interfaces;
 using BlowingCandles.Domain.Models;
 using BlowingCandles.Domain.Services;
-using BlowingCandles.Infrastructure.Audit;
 using BlowingCandles.Infrastructure.Calendar;
 using BlowingCandles.Infrastructure.Clock;
 using BlowingCandles.Infrastructure.Config;
@@ -21,43 +20,33 @@ public sealed class SignalRunExecutionService : ISignalRunExecutionService
     private static readonly SemaphoreSlim SimulationSemaphore = new(1, 1);
 
     private readonly AppConfig _config;
-    private readonly string _liveAuditPath;
     private readonly Func<PersistSignalRunRequest, SignalRunPersistenceResult> _persistRun;
     private readonly Func<string, ITradeGovernorStateStore> _governorStateStoreFactory;
     private readonly Func<AppConfig, IEarningsCalendar> _earningsCalendarFactory;
     private readonly Func<AppConfig, IMarketDataProvider> _marketDataProviderFactory;
-    private readonly OutputRenderer _outputRenderer;
-    private readonly Func<string, JsonlAuditWriter> _auditWriterFactory;
     private readonly Func<IClock> _realtimeClockFactory;
     private readonly Func<DateOnly, IClock> _simulationClockFactory;
     private readonly Action<string>? _diagnosticWriter;
 
     public SignalRunExecutionService(
         AppConfig config,
-        string configPath,
         Func<PersistSignalRunRequest, SignalRunPersistenceResult> persistRun,
         Func<string, ITradeGovernorStateStore> governorStateStoreFactory,
         Func<AppConfig, IEarningsCalendar>? earningsCalendarFactory = null,
         Func<AppConfig, IMarketDataProvider>? marketDataProviderFactory = null,
-        OutputRenderer? outputRenderer = null,
-        Func<string, JsonlAuditWriter>? auditWriterFactory = null,
         Func<IClock>? realtimeClockFactory = null,
         Func<DateOnly, IClock>? simulationClockFactory = null,
         Action<string>? diagnosticWriter = null)
     {
         ArgumentNullException.ThrowIfNull(config);
-        ArgumentNullException.ThrowIfNull(configPath);
         ArgumentNullException.ThrowIfNull(persistRun);
         ArgumentNullException.ThrowIfNull(governorStateStoreFactory);
 
         _config = config;
-        _liveAuditPath = ResolveAuditPath(config, configPath);
         _persistRun = persistRun;
         _governorStateStoreFactory = governorStateStoreFactory;
         _earningsCalendarFactory = earningsCalendarFactory ?? CreateEarningsCalendar;
         _marketDataProviderFactory = marketDataProviderFactory ?? CreateMarketDataProvider;
-        _outputRenderer = outputRenderer ?? new OutputRenderer();
-        _auditWriterFactory = auditWriterFactory ?? (path => new JsonlAuditWriter(path));
         _realtimeClockFactory = realtimeClockFactory ?? (() => new SystemClock());
         _simulationClockFactory = simulationClockFactory
             ?? (asOfDate => new FixedClock(new DateTimeOffset(asOfDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc))));
@@ -81,9 +70,6 @@ public sealed class SignalRunExecutionService : ISignalRunExecutionService
                     isSimulation: false,
                     clock,
                     stateStore,
-                    _config.Output.TextFile,
-                    _config.Output.JsonFile,
-                    _liveAuditPath,
                     LiveMode);
             });
     }
@@ -104,9 +90,6 @@ public sealed class SignalRunExecutionService : ISignalRunExecutionService
                     isSimulation: true,
                     clock,
                     stateStore,
-                    BuildSimulationOutputPath(_config.Output.TextFile, asOfDate, ".txt"),
-                    BuildSimulationOutputPath(_config.Output.JsonFile, asOfDate, ".json"),
-                    BuildSimulationAuditPath(_liveAuditPath),
                     SimulationMode);
             });
     }
@@ -125,7 +108,6 @@ public sealed class SignalRunExecutionService : ISignalRunExecutionService
             () =>
             {
                 var stateStore = _governorStateStoreFactory(SimulationMode);
-                var auditPath = BuildSimulationAuditPath(_liveAuditPath);
                 var results = new List<SignalRunExecutionResult>();
 
                 for (var currentDate = startDate; currentDate <= endDate; currentDate = currentDate.AddDays(1))
@@ -139,9 +121,6 @@ public sealed class SignalRunExecutionService : ISignalRunExecutionService
                             isSimulation: true,
                             clock,
                             stateStore,
-                            BuildSimulationOutputPath(_config.Output.TextFile, currentDate, ".txt"),
-                            BuildSimulationOutputPath(_config.Output.JsonFile, currentDate, ".json"),
-                            auditPath,
                             SimulationMode));
                 }
 
@@ -156,9 +135,6 @@ public sealed class SignalRunExecutionService : ISignalRunExecutionService
         bool isSimulation,
         IClock clock,
         ITradeGovernorStateStore governorStateStore,
-        string textOutputPath,
-        string jsonOutputPath,
-        string auditPath,
         string governorStateMode)
     {
         var startedAtUtc = DateTimeOffset.UtcNow;
@@ -206,8 +182,6 @@ public sealed class SignalRunExecutionService : ISignalRunExecutionService
             errorMessage = exception.Message;
             WriteDiagnostic($"Persisting {runType} run for {asOfDate:yyyy-MM-dd} failed: {exception.Message}");
         }
-
-        TryWriteArtifacts(textOutputPath, jsonOutputPath, auditPath, signals);
 
         return CreateExecutionResult(
             persistenceResult?.RunId ?? 0L,
@@ -296,31 +270,6 @@ public sealed class SignalRunExecutionService : ISignalRunExecutionService
         }
     }
 
-    private void TryWriteArtifacts(
-        string textOutputPath,
-        string jsonOutputPath,
-        string auditPath,
-        IReadOnlyList<FinalSignal> signals)
-    {
-        try
-        {
-            _outputRenderer.WriteSignals(textOutputPath, jsonOutputPath, signals);
-        }
-        catch (Exception exception)
-        {
-            WriteDiagnostic($"Writing signal output failed: {exception.Message}");
-        }
-
-        try
-        {
-            _auditWriterFactory(auditPath).Append(signals);
-        }
-        catch (Exception exception)
-        {
-            WriteDiagnostic($"Writing audit output failed: {exception.Message}");
-        }
-    }
-
     private static SignalRunExecutionResult CreateExecutionResult(
         long runId,
         SignalRunType runType,
@@ -393,45 +342,6 @@ public sealed class SignalRunExecutionService : ISignalRunExecutionService
         }
 
         return trigger.Trim();
-    }
-
-    private static string ResolveAuditPath(AppConfig config, string configPath)
-    {
-        if (!string.IsNullOrWhiteSpace(config.Audit.ResolvedJsonlPath))
-        {
-            return config.Audit.ResolvedJsonlPath;
-        }
-
-        var baseDirectory = Path.GetDirectoryName(Path.GetFullPath(configPath)) ?? Directory.GetCurrentDirectory();
-        return Path.GetFullPath(Path.Combine(baseDirectory, "logs/decisions.jsonl"));
-    }
-
-    private static string BuildSimulationAuditPath(string liveAuditPath)
-    {
-        return BuildSimulationSiblingPath(liveAuditPath, "sim_");
-    }
-
-    private static string BuildSimulationOutputPath(string liveOutputPath, DateOnly asOfDate, string extension)
-    {
-        var directory = Path.GetDirectoryName(liveOutputPath);
-        var simulationFileName = $"asof_{asOfDate:yyyy-MM-dd}.signals{extension}";
-
-        return string.IsNullOrWhiteSpace(directory)
-            ? simulationFileName
-            : Path.Combine(directory, simulationFileName);
-    }
-
-    private static string BuildSimulationSiblingPath(string livePath, string prefix)
-    {
-        var directory = Path.GetDirectoryName(livePath);
-        var fileName = Path.GetFileName(livePath);
-        var simulationFileName = fileName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-            ? fileName
-            : $"{prefix}{fileName}";
-
-        return string.IsNullOrWhiteSpace(directory)
-            ? simulationFileName
-            : Path.Combine(directory, simulationFileName);
     }
 
     private void WriteDiagnostic(string message)

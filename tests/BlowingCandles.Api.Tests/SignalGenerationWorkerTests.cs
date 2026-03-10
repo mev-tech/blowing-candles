@@ -137,13 +137,6 @@ public sealed class SignalGenerationWorkerTests
                 watchlist: []
                 news:
                   local_earnings_calendar: earnings_calendar.json
-                output:
-                  text_file: output/live.signals.txt
-                  json_file: output/live.signals.json
-                state:
-                  path: data/state.json
-                audit:
-                  jsonl_path: logs/decisions.jsonl
                 """);
             WriteFile("earnings_calendar.json", "{}" + Environment.NewLine);
         }

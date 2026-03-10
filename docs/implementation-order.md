@@ -272,7 +272,7 @@ This document describes the order in which major system capabilities should be i
 - `AppDbContext` extended with `DbSet<SignalRunEntity>`, `DbSet<SignalRunResultEntity>`, and `DbSet<TradeGovernorStateEntity>`
 - `SignalRunPersistenceService` implementing the full run persistence workflow: failed-run validation (rejects signals when `ErrorMessage` is set), ticker normalization (trim + uppercase), ticker deduplication (last wins, consistent with `MarketDataSnapshotPersistenceService`), reason truncation (256 chars), transactional writes with governor state upsert, deduplicated `TickerCount`, and best-effort run failure marking on rollback
 - `SignalRunReadService` with `GetLatestLiveRun()` (latest completed non-simulation run), `GetRunById()`, and `GetRecentRuns()` (capped at 100, ordered by `started_at_utc` descending) — all with eager-loaded results sorted by ticker
-- `TradeGovernorDbStateStore` implementing `ITradeGovernorStateStore` backed by PostgreSQL with day-reset logic matching `JsonStateStore`, upsert pattern with concurrent-insert race handling, and strict mode validation (`"live"` or `"simulation"` only)
+- `TradeGovernorDbStateStore` implementing `ITradeGovernorStateStore` backed by PostgreSQL with day-reset logic, upsert pattern with concurrent-insert race handling, and strict mode validation (`"live"` or `"simulation"` only)
 - `TradeGovernorDbStateStoreFactory` for DI-compatible mode-parameterized construction
 - `TradeGovernorStatePersistence` shared static helper for upsert, normalization, and day formatting — used by both `TradeGovernorDbStateStore.Save()` and `SignalRunPersistenceService.PersistGovernorState()`
 - `SignalRunPersistenceLimits` centralizing max-length constants for ticker (16), trigger (32), reason (256), error message (1024), mode (16), and day (10)
@@ -326,19 +326,17 @@ PostgreSQL tables for persisting signal pipeline results, trade governor state, 
 
 ### Step 2: Shared Execution Service ✅
 
-**Status: COMPLETED**
+**Status: COMPLETED (updated by Step 5 — file write-behind removed)**
 
 **What was built:**
 - `ISignalRunExecutionService` interface and `SignalRunExecutionService` implementation in the Application layer (`src/BlowingCandles.Application/Services/`) as the single entry point for realtime, as-of, and range signal pipeline runs regardless of trigger source (API, worker, CLI)
-- Shared orchestration: pipeline execution → PostgreSQL run persistence via `SignalRunPersistenceService` → audit JSONL writes → file write-behind artifact output (signals.txt, signals.json)
-- Structured `SignalRunExecutionResult` record returned to callers with run ID, status, signals, timestamps, and error message
-- Live vs simulation isolation via per-mode `SemaphoreSlim` concurrency guards (`LiveSemaphore`, `SimulationSemaphore`) and mode-specific governor state, audit, and output paths
-- `RunCommandSupport.cs` deleted; path-building helpers (`ResolveAuditPath`, `BuildSimulationAuditPath`, `BuildSimulationOutputPath`) moved into the execution service as private static methods
-- CLI handlers (`RunRealtimeHandler`, `RunAsOfHandler`, `RunRangeHandler`) migrated to thin wrappers delegating to `ISignalRunExecutionService`
-- `BlowingCandles.Application` project now references `BlowingCandles.Infrastructure` for persistence, audit, clock, calendar, and config types
+- Shared orchestration: pipeline execution → PostgreSQL run persistence via `SignalRunPersistenceService` → structured `SignalRunExecutionResult` returned to callers
+- Live vs simulation isolation via per-mode `SemaphoreSlim` concurrency guards (`LiveSemaphore`, `SimulationSemaphore`) and mode-specific governor state
+- `RunCommandSupport.cs` deleted; CLI handlers (`RunRealtimeHandler`, `RunAsOfHandler`, `RunRangeHandler`) migrated to thin wrappers delegating to `ISignalRunExecutionService`
+- `BlowingCandles.Application` project now references `BlowingCandles.Infrastructure` for persistence, clock, calendar, and config types
 - Wall-clock timestamps (`DateTimeOffset.UtcNow`) for run metadata (`StartedAtUtc`, `CompletedAtUtc`); domain `IClock` used only for pipeline execution
 
-**Validation:** `SignalRunExecutionServiceTests` covering successful realtime/as-of/range runs, empty watchlist, pipeline failure with failed-run persistence, persistence failure with best-effort file write-behind, concurrent live run serialization, and cross-mode independence (simulation does not block live). `RunCommandHandlerTests` verifying thin handler delegation and exit code mapping. All 20 tests pass, solution builds with zero warnings.
+**Validation:** `SignalRunExecutionServiceTests` covering successful realtime/as-of/range runs, empty watchlist, pipeline failure with failed-run persistence, persistence failure, concurrent live run serialization, and cross-mode independence (simulation does not block live). `RunCommandHandlerTests` verifying thin handler delegation and exit code mapping.
 
 **Feature spec:** `docs/features/signal-run-execution-service.md`
 
@@ -371,6 +369,38 @@ Extended the API with write endpoints (`POST /api/runs/realtime`, `POST /api/run
 
 **Feature spec:** `docs/features/background-worker.md`
 
-### Step 5: Containerized Service and Cleanup
+### Step 5: Containerized Service and Cleanup ✅
 
-Make the API the default and only runtime surface. Update `docker-compose.yml`, `Dockerfile`, and `docker-entrypoint.sh`. Optionally remove the CLI project. Remove `SignalsFileReader`, file write-behind, and `JsonStateStore` once DB equivalents are validated.
+**Status: COMPLETED**
+
+**What was built:**
+- `Dockerfile` updated: API as default entrypoint (`/app/api/BlowingCandles.Api.dll`), CLI available via `cli` subcommand or legacy command shortcuts, `curl` installed for health check, `HEALTHCHECK --start-period=10s` against `/health/live`, non-root `app` user, port 5000 exposed
+- `docker-compose.yml` updated: `app` service runs API by default, `Worker__Enabled=true` and `Worker__IntervalMinutes=60` environment variables, port 5000 exposed, `data` and `logs` volume mounts removed (no more file-backed state/audit/output), `config.yaml` and `earnings_calendar.json` mounted read-only
+- `docker-entrypoint.sh` updated: default (no args) starts API on `0.0.0.0:5000`, `cli` subcommand delegates to CLI DLL, legacy CLI commands (`check-calendar`, `run-realtime`, etc.) still work as shortcuts, arbitrary commands via `exec "$@"` fallback
+- `SignalsFileReader.cs` deleted (`src/BlowingCandles.Api/Services/`)
+- `JsonStateStore.cs` deleted (`src/BlowingCandles.Infrastructure/State/`)
+- `OutputRenderer.cs` deleted (`src/BlowingCandles.Application/`)
+- `SignalRunExecutionService` simplified: `OutputRenderer`, `JsonlAuditWriter`, and all file write-behind code removed; service now only persists to PostgreSQL via `SignalRunPersistenceService` and returns `SignalRunExecutionResult`
+- `JsonStateStoreTests.cs` and `OutputRendererTests.cs` deleted
+- Cross-validation tests (`GoldenOutputTests`) refactored to validate pipeline output in-memory via `RunArtifacts`/`RangeRunArtifacts` records rather than reading files from disk
+- Dead file-path comparison overloads removed from `ComparisonHelpers` (`AssertTextMatches`, `AssertJsonMatches`, `AssertJsonlMatches`)
+- `SignalRunExecutionServiceTests` cleaned up: vestigial `OutputConfig`, `StateConfig`, `AuditConfig` and file-existence assertions removed
+- `docs/architecture.md` updated to reflect all deletions: removed `OutputRenderer`, `JsonStateStore`, `SignalsFileReader` references, updated data flow diagram, project structure tree, state management, and live/simulation isolation sections
+
+**What was removed:**
+- `SignalsFileReader` — superseded by `SignalRunReadService` (DB-backed reads)
+- `JsonStateStore` — superseded by `TradeGovernorDbStateStore` (PostgreSQL-backed)
+- `OutputRenderer` — file write-behind no longer needed; API serves signals from PostgreSQL
+- File write-behind in `SignalRunExecutionService` — `signals.txt`, `signals.json`, and audit JSONL file writes removed
+- `data` and `logs` Docker volume mounts — no file-backed state or output
+
+**What was NOT changed:**
+- CLI project remains for local development and one-off commands
+- Domain logic, pipeline behavior, and API endpoints unchanged
+- PostgreSQL schema and persistence services unchanged
+- `JsonlAuditWriter` and `JsonlAuditReader` retained (used by `stats-periods` CLI command)
+
+**Validation:** All existing tests pass. Docker build succeeds with API as default entrypoint. Legacy CLI commands work via entrypoint shortcuts. No code references to deleted components remain.
+
+**Feature spec:** `docs/features/containerized-service-cleanup.md`
+**Fix spec:** `docs/reviews/containerized-service-cleanup-fixes.md`

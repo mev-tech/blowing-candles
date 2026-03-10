@@ -35,7 +35,7 @@ public static class ApiHost
         builder.Services.Configure<WorkerOptions>(
             builder.Configuration.GetSection(WorkerOptions.SectionName));
         builder.Services.AddScoped<ISignalRunExecutionService>(serviceProvider =>
-            CreateExecutionService(serviceProvider, appConfig, resolvedConfigPath));
+            CreateExecutionService(serviceProvider, appConfig));
 
         var workerOptions = builder.Configuration
             .GetSection(WorkerOptions.SectionName)
@@ -111,8 +111,7 @@ public static class ApiHost
 
     private static ISignalRunExecutionService CreateExecutionService(
         IServiceProvider serviceProvider,
-        AppConfig appConfig,
-        string configPath)
+        AppConfig appConfig)
     {
         var signalRunPersistence = serviceProvider.GetRequiredService<SignalRunPersistenceService>();
         var governorStateStoreFactory = serviceProvider.GetRequiredService<TradeGovernorDbStateStoreFactory>();
@@ -122,7 +121,6 @@ public static class ApiHost
 
         return new SignalRunExecutionService(
             appConfig,
-            configPath,
             signalRunPersistence.PersistRun,
             governorStateStoreFactory.Create,
             diagnosticWriter: message => logger.LogError("{Message}", message));

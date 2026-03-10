@@ -1,10 +1,11 @@
+using System.Text.Json;
 using BlowingCandles.Application;
+using BlowingCandles.Domain.Interfaces;
+using BlowingCandles.Domain.Models;
 using BlowingCandles.Domain.Services;
-using BlowingCandles.Infrastructure.Audit;
 using BlowingCandles.Infrastructure.Calendar;
 using BlowingCandles.Infrastructure.Clock;
 using BlowingCandles.Infrastructure.Config;
-using BlowingCandles.Infrastructure.State;
 
 namespace BlowingCandles.CrossValidation.Tests;
 
@@ -23,9 +24,9 @@ public sealed class GoldenOutputTests
 
         var result = RunAsOf(workspace, MixedActionsAsOfDate);
 
-        ComparisonHelpers.AssertTextMatches(
+        ComparisonHelpers.AssertTextContentMatches(
             workspace.GetGoldenPath("golden/run-asof/signals.txt"),
-            result.TextPath);
+            result.TextContent);
     }
 
     [Fact]
@@ -35,9 +36,9 @@ public sealed class GoldenOutputTests
 
         var result = RunAsOf(workspace, MixedActionsAsOfDate);
 
-        ComparisonHelpers.AssertJsonMatches(
+        ComparisonHelpers.AssertJsonContentMatches(
             workspace.GetGoldenPath("golden/run-asof/signals.json"),
-            result.JsonPath);
+            result.JsonContent);
     }
 
     [Fact]
@@ -47,9 +48,9 @@ public sealed class GoldenOutputTests
 
         var result = RunAsOf(workspace, MixedActionsAsOfDate);
 
-        ComparisonHelpers.AssertJsonlMatches(
+        ComparisonHelpers.AssertJsonlContentMatches(
             workspace.GetGoldenPath("golden/run-asof/decisions.jsonl"),
-            result.AuditPath);
+            result.AuditJsonlContent);
     }
 
     [Fact]
@@ -61,17 +62,17 @@ public sealed class GoldenOutputTests
 
         foreach (var day in EachDate(MixedActionsRangeStart, MixedActionsRangeEnd))
         {
-            ComparisonHelpers.AssertTextMatches(
+            ComparisonHelpers.AssertTextContentMatches(
                 workspace.GetGoldenPath($"golden/run-range/asof_{day:yyyy-MM-dd}.signals.txt"),
-                result.GetTextPath(day));
-            ComparisonHelpers.AssertJsonMatches(
+                result.GetTextContent(day));
+            ComparisonHelpers.AssertJsonContentMatches(
                 workspace.GetGoldenPath($"golden/run-range/asof_{day:yyyy-MM-dd}.signals.json"),
-                result.GetJsonPath(day));
+                result.GetJsonContent(day));
         }
 
-        ComparisonHelpers.AssertJsonlMatches(
+        ComparisonHelpers.AssertJsonlContentMatches(
             workspace.GetGoldenPath("golden/run-range/decisions.jsonl"),
-            result.AuditPath);
+            result.AuditJsonlContent);
     }
 
     [Fact]
@@ -81,15 +82,15 @@ public sealed class GoldenOutputTests
 
         var result = RunAsOf(workspace, AllWaitAsOfDate);
 
-        ComparisonHelpers.AssertTextMatches(
+        ComparisonHelpers.AssertTextContentMatches(
             workspace.GetGoldenPath("golden/run-asof/signals.txt"),
-            result.TextPath);
-        ComparisonHelpers.AssertJsonMatches(
+            result.TextContent);
+        ComparisonHelpers.AssertJsonContentMatches(
             workspace.GetGoldenPath("golden/run-asof/signals.json"),
-            result.JsonPath);
-        ComparisonHelpers.AssertJsonlMatches(
+            result.JsonContent);
+        ComparisonHelpers.AssertJsonlContentMatches(
             workspace.GetGoldenPath("golden/run-asof/decisions.jsonl"),
-            result.AuditPath);
+            result.AuditJsonlContent);
     }
 
     [Fact]
@@ -99,66 +100,58 @@ public sealed class GoldenOutputTests
 
         var result = RunAsOf(workspace, EmptyWatchlistAsOfDate);
 
-        ComparisonHelpers.AssertTextMatches(
+        ComparisonHelpers.AssertTextContentMatches(
             workspace.GetGoldenPath("golden/run-asof/signals.txt"),
-            result.TextPath);
-        ComparisonHelpers.AssertJsonMatches(
+            result.TextContent);
+        ComparisonHelpers.AssertJsonContentMatches(
             workspace.GetGoldenPath("golden/run-asof/signals.json"),
-            result.JsonPath);
-        ComparisonHelpers.AssertJsonlMatches(
+            result.JsonContent);
+        ComparisonHelpers.AssertJsonlContentMatches(
             workspace.GetGoldenPath("golden/run-asof/decisions.jsonl"),
-            result.AuditPath);
+            result.AuditJsonlContent);
     }
 
     private static RunArtifacts RunAsOf(ScenarioWorkspace workspace, DateOnly asOfDate)
     {
         var config = workspace.LoadConfig();
         var provider = new FixtureMarketDataProvider(workspace.GetFixturePath("market-data"));
-        var textPath = workspace.ResolvePath(config.Output.TextFile);
-        var jsonPath = workspace.ResolvePath(config.Output.JsonFile);
-        var auditPath = workspace.ResolveOptionalPath(config.Audit.ResolvedJsonlPath ?? config.Audit.JsonlPath)
-            ?? workspace.GetOutputPath("decisions.jsonl");
-        var pipeline = CreatePipeline(config, provider, workspace.ResolvePath(config.State.Path));
+        var pipeline = CreatePipeline(config, provider, new InMemoryTradeGovernorStateStore());
         var clock = new FixedClock(new DateTimeOffset(asOfDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc)));
         var signals = pipeline.Run(config.Watchlist, clock);
 
-        new OutputRenderer().WriteSignals(textPath, jsonPath, signals);
-        new JsonlAuditWriter(auditPath).Append(signals);
-
-        return new RunArtifacts(textPath, jsonPath, auditPath);
+        return new RunArtifacts(
+            RenderText(signals),
+            SignalsJsonSerializer.Serialize(signals),
+            RenderAuditJsonl(signals));
     }
 
     private static RangeRunArtifacts RunRange(ScenarioWorkspace workspace, DateOnly startDate, DateOnly endDate)
     {
         var config = workspace.LoadConfig();
         var provider = new FixtureMarketDataProvider(workspace.GetFixturePath("market-data"));
-        var renderer = new OutputRenderer();
-        var liveTextPath = workspace.ResolvePath(config.Output.TextFile);
-        var liveJsonPath = workspace.ResolvePath(config.Output.JsonFile);
-        var liveAuditPath = workspace.ResolveOptionalPath(config.Audit.ResolvedJsonlPath ?? config.Audit.JsonlPath)
-            ?? workspace.GetOutputPath("decisions.jsonl");
-        var auditPath = BuildSimulationSiblingPath(liveAuditPath, "sim_");
-        var statePath = BuildSimulationSiblingPath(workspace.ResolvePath(config.State.Path), "sim_");
-        var pipeline = CreatePipeline(config, provider, statePath);
+        var pipeline = CreatePipeline(config, provider, new InMemoryTradeGovernorStateStore());
+        var outputsByDay = new Dictionary<DateOnly, DayArtifacts>();
+        var auditLines = new List<string>();
 
         foreach (var day in EachDate(startDate, endDate))
         {
             var clock = new FixedClock(new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc)));
             var signals = pipeline.Run(config.Watchlist, clock);
-            var textPath = BuildSimulationOutputPath(liveTextPath, day, ".txt");
-            var jsonPath = BuildSimulationOutputPath(liveJsonPath, day, ".json");
-
-            renderer.WriteSignals(textPath, jsonPath, signals);
-            new JsonlAuditWriter(auditPath).Append(signals);
+            outputsByDay[day] = new DayArtifacts(
+                RenderText(signals),
+                SignalsJsonSerializer.Serialize(signals));
+            auditLines.AddRange(RenderAuditJsonlLines(signals));
         }
 
         return new RangeRunArtifacts(
-            Path.GetDirectoryName(liveTextPath) ?? workspace.RootPath,
-            Path.GetDirectoryName(liveJsonPath) ?? workspace.RootPath,
-            auditPath);
+            outputsByDay,
+            string.Join(Environment.NewLine, auditLines));
     }
 
-    private static SignalPipeline CreatePipeline(AppConfig config, FixtureMarketDataProvider provider, string statePath)
+    private static SignalPipeline CreatePipeline(
+        AppConfig config,
+        FixtureMarketDataProvider provider,
+        ITradeGovernorStateStore stateStore)
     {
         var calendarPath = config.News.ResolvedLocalEarningsCalendar
             ?? throw new InvalidOperationException("Cross-validation fixtures require a local earnings calendar.");
@@ -169,7 +162,7 @@ public sealed class GoldenOutputTests
             new TradeGovernor(
                 config.Policy.MaxBuysPerDay,
                 config.Policy.CooldownMinutes,
-                new JsonStateStore(statePath)));
+                stateStore));
     }
 
     private static IEnumerable<DateOnly> EachDate(DateOnly startDate, DateOnly endDate)
@@ -180,27 +173,55 @@ public sealed class GoldenOutputTests
         }
     }
 
-    private static string BuildSimulationOutputPath(string liveOutputPath, DateOnly asOfDate, string extension)
+    private static string RenderText(IEnumerable<FinalSignal> signals)
     {
-        var directory = Path.GetDirectoryName(liveOutputPath);
-        var simulationFileName = $"asof_{asOfDate:yyyy-MM-dd}.signals{extension}";
-
-        return string.IsNullOrWhiteSpace(directory)
-            ? simulationFileName
-            : Path.Combine(directory, simulationFileName);
+        return string.Join(
+            Environment.NewLine,
+            signals.Select(signal =>
+                $"{signal.Ticker}: Action.{signal.Action} | NewsState.{signal.NewsState} | Action.{signal.MarketAction} | {signal.Reason}"));
     }
 
-    private static string BuildSimulationSiblingPath(string livePath, string prefix)
+    private static string RenderAuditJsonl(IEnumerable<FinalSignal> signals)
     {
-        var directory = Path.GetDirectoryName(livePath);
-        var fileName = Path.GetFileName(livePath);
-        var simulationFileName = fileName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-            ? fileName
-            : $"{prefix}{fileName}";
+        return string.Join(Environment.NewLine, RenderAuditJsonlLines(signals));
+    }
 
-        return string.IsNullOrWhiteSpace(directory)
-            ? simulationFileName
-            : Path.Combine(directory, simulationFileName);
+    private static IReadOnlyList<string> RenderAuditJsonlLines(IEnumerable<FinalSignal> signals)
+    {
+        return signals.Select(signal =>
+            JsonSerializer.Serialize(
+                new
+                {
+                    ticker = signal.Ticker,
+                    action = $"Action.{signal.Action}",
+                    news_state = $"NewsState.{signal.NewsState}",
+                    market_action = $"Action.{signal.MarketAction}",
+                    reason = signal.Reason,
+                    timestamp = signal.Timestamp.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:sszzz")
+                }))
+            .ToArray();
+    }
+
+    private sealed class InMemoryTradeGovernorStateStore : ITradeGovernorStateStore
+    {
+        private TradeGovernorState? _state;
+
+        public TradeGovernorState Load(IClock clock)
+        {
+            var currentDay = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime).ToString("yyyy-MM-dd");
+
+            if (_state is null || !string.Equals(_state.Day, currentDay, StringComparison.Ordinal))
+            {
+                _state = new TradeGovernorState(currentDay, 0, null);
+            }
+
+            return _state;
+        }
+
+        public void Save(TradeGovernorState state)
+        {
+            _state = state;
+        }
     }
 
     private sealed class ScenarioWorkspace : IDisposable
@@ -234,22 +255,6 @@ public sealed class GoldenOutputTests
             return Path.Combine(RootPath, relativePath);
         }
 
-        public string ResolvePath(string path)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(path);
-
-            return Path.IsPathRooted(path)
-                ? path
-                : Path.GetFullPath(Path.Combine(RootPath, path));
-        }
-
-        public string? ResolveOptionalPath(string? path)
-        {
-            return string.IsNullOrWhiteSpace(path)
-                ? null
-                : ResolvePath(path);
-        }
-
         public AppConfig LoadConfig()
         {
             return new YamlConfigLoader().Load(GetOutputPath("config.yaml"));
@@ -275,18 +280,22 @@ public sealed class GoldenOutputTests
         }
     }
 
-    private sealed record RunArtifacts(string TextPath, string JsonPath, string AuditPath);
+    private sealed record RunArtifacts(string TextContent, string JsonContent, string AuditJsonlContent);
 
-    private sealed record RangeRunArtifacts(string TextRootPath, string JsonRootPath, string AuditPath)
+    private sealed record DayArtifacts(string TextContent, string JsonContent);
+
+    private sealed record RangeRunArtifacts(
+        IReadOnlyDictionary<DateOnly, DayArtifacts> OutputsByDay,
+        string AuditJsonlContent)
     {
-        public string GetTextPath(DateOnly date)
+        public string GetTextContent(DateOnly date)
         {
-            return Path.Combine(TextRootPath, $"asof_{date:yyyy-MM-dd}.signals.txt");
+            return OutputsByDay[date].TextContent;
         }
 
-        public string GetJsonPath(DateOnly date)
+        public string GetJsonContent(DateOnly date)
         {
-            return Path.Combine(JsonRootPath, $"asof_{date:yyyy-MM-dd}.signals.json");
+            return OutputsByDay[date].JsonContent;
         }
     }
 }

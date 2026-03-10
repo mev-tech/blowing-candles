@@ -138,7 +138,6 @@ internal static class Program
 
         return new SignalRunExecutionService(
             config,
-            configPath,
             signalRunPersistence.PersistRun,
             governorStateStoreFactory.Create,
             diagnosticWriter: Console.Error.WriteLine);
