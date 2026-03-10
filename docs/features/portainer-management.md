@@ -67,6 +67,7 @@ services:
 ## Error Handling
 
 - If Docker socket is unavailable, Portainer will start but show no environments. This is a host configuration issue, not an application error.
+- Portainer CE enforces a 5-minute timeout on the initial admin account creation page. If the container runs longer than 5 minutes before first access, Portainer locks itself. Recovery: restart the container (`docker compose restart portainer`) or reset its data (`docker volume rm <project>_portainer_data`) and navigate to `https://localhost:9443` immediately.
 - `restart: always` ensures all services recover from crashes or OOM kills automatically.
 
 ## Dependencies

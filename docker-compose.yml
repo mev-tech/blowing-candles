@@ -8,10 +8,25 @@ services:
         condition: service_healthy
     environment:
       - ConnectionStrings__AppDb=Host=postgres;Port=5432;Database=blowing_candles;Username=postgres;Password=postgres
-      - Worker__Enabled=true
-      - Worker__IntervalMinutes=60
+      - Worker__Enabled=false
     ports:
       - "5000:5000"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./earnings_calendar.json:/app/earnings_calendar.json:ro
+
+  worker:
+    image: blowing-candles
+    restart: always
+    depends_on:
+      app:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    environment:
+      - ConnectionStrings__AppDb=Host=postgres;Port=5432;Database=blowing_candles;Username=postgres;Password=postgres
+      - Worker__Enabled=true
+      - Worker__IntervalMinutes=60
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ./earnings_calendar.json:/app/earnings_calendar.json:ro
