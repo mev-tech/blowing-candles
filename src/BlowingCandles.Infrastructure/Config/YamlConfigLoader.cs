@@ -38,9 +38,6 @@ public sealed class YamlConfigLoader
 
         var baseDirectory = Path.GetDirectoryName(Path.GetFullPath(path)) ?? Directory.GetCurrentDirectory();
         var localEarningsCalendar = NormalizeOptionalString(config.News?.LocalEarningsCalendar);
-        var outputTextFile = NormalizeOptionalString(config.Output?.TextFile) ?? "signals.txt";
-        var outputJsonFile = NormalizeOptionalString(config.Output?.JsonFile) ?? "signals.json";
-        var statePath = NormalizeOptionalString(config.State?.Path) ?? "data/state.json";
         var auditJsonlPath = NormalizeOptionalString(config.Audit?.JsonlPath);
 
         return new AppConfig
@@ -55,15 +52,6 @@ public sealed class YamlConfigLoader
                 ResolvedLocalEarningsCalendar = localEarningsCalendar is null
                     ? null
                     : ResolvePath(baseDirectory, localEarningsCalendar)
-            },
-            Output = (config.Output ?? new OutputConfig()) with
-            {
-                TextFile = ResolvePath(baseDirectory, outputTextFile),
-                JsonFile = ResolvePath(baseDirectory, outputJsonFile)
-            },
-            State = (config.State ?? new StateConfig()) with
-            {
-                Path = ResolvePath(baseDirectory, statePath)
             },
             Audit = (config.Audit ?? new AuditConfig()) with
             {
@@ -97,10 +85,6 @@ public sealed class YamlConfigLoader
         public NewsConfig? News { get; init; }
 
         public PolicyConfig? Policy { get; init; }
-
-        public OutputConfig? Output { get; init; }
-
-        public StateConfig? State { get; init; }
 
         public AuditConfig? Audit { get; init; }
     }

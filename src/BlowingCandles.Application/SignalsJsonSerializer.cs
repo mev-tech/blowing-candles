@@ -46,6 +46,6 @@ public static class SignalsJsonSerializer
         ArgumentNullException.ThrowIfNull(json);
 
         return JsonSerializer.Deserialize<SignalFileEntry[]>(json, JsonOptions)
-            ?? throw new JsonException("signals.json did not contain a JSON array.");
+            ?? throw new JsonException("Signal payload did not contain a JSON array.");
     }
 }

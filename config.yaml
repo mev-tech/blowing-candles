@@ -12,12 +12,5 @@ policy:
   max_buys_per_day: 99999999
   cooldown_minutes: 0
 
-output:
-  text_file: signals.txt
-  json_file: signals.json
-
-state:
-  path: data/state.json
-
 audit:
   jsonl_path: logs/decisions.jsonl

@@ -5,7 +5,7 @@ namespace BlowingCandles.Infrastructure.Tests;
 public sealed class YamlConfigLoaderTests
 {
     [Fact]
-    public void Load_FullConfig_LoadsAllSectionsAndResolvesRelativePaths()
+    public void Load_FullConfig_LoadsConsumedSectionsAndResolvesRelativePaths()
     {
         using var workspace = new TestWorkspace();
         workspace.WriteFile("configs/runtime/config.yaml", """
@@ -16,11 +16,6 @@ news:
 policy:
   max_buys_per_day: 3
   cooldown_minutes: 15
-output:
-  text_file: out/signals.txt
-  json_file: out/signals.json
-state:
-  path: data/custom-state.json
 audit:
   jsonl_path: logs/decisions.jsonl
 """);
@@ -35,9 +30,6 @@ audit:
         Assert.Equal(72, config.News.BlockWindowHours);
         Assert.Equal(3, config.Policy.MaxBuysPerDay);
         Assert.Equal(15, config.Policy.CooldownMinutes);
-        Assert.Equal(workspace.GetPath("configs/runtime/out/signals.txt"), config.Output.TextFile);
-        Assert.Equal(workspace.GetPath("configs/runtime/out/signals.json"), config.Output.JsonFile);
-        Assert.Equal(workspace.GetPath("configs/runtime/data/custom-state.json"), config.State.Path);
         Assert.Equal("logs/decisions.jsonl", config.Audit.JsonlPath);
         Assert.Equal(workspace.GetPath("configs/runtime/logs/decisions.jsonl"), config.Audit.ResolvedJsonlPath);
     }
@@ -60,26 +52,18 @@ watchlist: [ aapl ]
         Assert.Equal(48, config.News.BlockWindowHours);
         Assert.Equal(int.MaxValue, config.Policy.MaxBuysPerDay);
         Assert.Equal(0, config.Policy.CooldownMinutes);
-        Assert.Equal(workspace.GetPath("signals.txt"), config.Output.TextFile);
-        Assert.Equal(workspace.GetPath("signals.json"), config.Output.JsonFile);
-        Assert.Equal(workspace.GetPath("data/state.json"), config.State.Path);
         Assert.Null(config.Audit.JsonlPath);
         Assert.Null(config.Audit.ResolvedJsonlPath);
     }
 
     [Fact]
-    public void Load_BlankPathValues_FallBackToDefaultsOrNull()
+    public void Load_BlankOptionalPathValues_FallBackToNull()
     {
         using var workspace = new TestWorkspace();
         workspace.WriteFile("config.yaml", """
 watchlist: [AAPL]
 news:
   local_earnings_calendar: "   "
-output:
-  text_file: " "
-  json_file: ""
-state:
-  path: "  "
 audit:
   jsonl_path: ""
 """);
@@ -90,9 +74,6 @@ audit:
 
         Assert.Null(config.News.LocalEarningsCalendar);
         Assert.Null(config.News.ResolvedLocalEarningsCalendar);
-        Assert.Equal(workspace.GetPath("signals.txt"), config.Output.TextFile);
-        Assert.Equal(workspace.GetPath("signals.json"), config.Output.JsonFile);
-        Assert.Equal(workspace.GetPath("data/state.json"), config.State.Path);
         Assert.Null(config.Audit.JsonlPath);
         Assert.Null(config.Audit.ResolvedJsonlPath);
     }
