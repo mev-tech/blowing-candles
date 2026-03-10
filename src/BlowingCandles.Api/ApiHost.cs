@@ -1,5 +1,6 @@
 using BlowingCandles.Application;
 using BlowingCandles.Application.Services;
+using BlowingCandles.Api.Workers;
 using BlowingCandles.Infrastructure.Config;
 using BlowingCandles.Infrastructure.Persistence;
 using BlowingCandles.Infrastructure.Persistence.Models;
@@ -31,8 +32,20 @@ public static class ApiHost
 
         builder.Services.AddSingleton(appConfig);
         builder.Services.AddPersistence(builder.Configuration);
+        builder.Services.Configure<WorkerOptions>(
+            builder.Configuration.GetSection(WorkerOptions.SectionName));
         builder.Services.AddScoped<ISignalRunExecutionService>(serviceProvider =>
             CreateExecutionService(serviceProvider, appConfig, resolvedConfigPath));
+
+        var workerOptions = builder.Configuration
+            .GetSection(WorkerOptions.SectionName)
+            .Get<WorkerOptions>()
+            ?? new WorkerOptions();
+
+        if (workerOptions.Enabled)
+        {
+            builder.Services.AddHostedService<SignalGenerationWorker>();
+        }
 
         var app = builder.Build();
 
@@ -85,6 +98,8 @@ public static class ApiHost
         builder.Configuration
             .AddJsonFile("appsettings.json", optional: true)
             .AddJsonFile("appsettings.Development.json", optional: true)
+            .AddJsonFile(Path.Combine("src", "BlowingCandles.Api", "appsettings.json"), optional: true)
+            .AddJsonFile(Path.Combine("src", "BlowingCandles.Api", "appsettings.Development.json"), optional: true)
             .AddJsonFile(Path.Combine("src", "BlowingCandles.Cli", "appsettings.json"), optional: true)
             .AddJsonFile(Path.Combine("src", "BlowingCandles.Cli", "appsettings.Development.json"), optional: true);
 

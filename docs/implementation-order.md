@@ -313,6 +313,8 @@ The following decisions should be made before or during the indicated phase:
 | API write endpoints | Step 3 ✅ | `POST /api/runs/*` delegates to `ISignalRunExecutionService`; trigger source `"api"`; synchronous execution returning 202; try/catch with 503 on failure |
 | API health checks | Step 3 ✅ | `GET /health/live` (always 200) and `GET /health/ready` (PostgreSQL connectivity via `PostgreSqlHealthCheck` with `"ready"` tag) |
 | Enum serialization | Step 3 ✅ | `JsonStringEnumConverter` added to `SignalsJsonSerializer.JsonOptions` for correct enum string rendering on run endpoints |
+| Background worker scheduling | Step 4 ✅ | Fixed-interval `BackgroundService` via `WorkerOptions`; no cron expressions; disabled by default; `"worker"` trigger source; shares `LiveSemaphore` with API |
+| Worker configuration source | Step 4 ✅ | `appsettings.json` `Worker` section (`Enabled`, `IntervalMinutes`); not in `config.yaml`; environment variable override via standard ASP.NET config binding |
 
 ## API-First Execution Plan
 
@@ -348,9 +350,26 @@ Extended the API with write endpoints (`POST /api/runs/realtime`, `POST /api/run
 
 **Feature spec:** `docs/features/api-endpoints-db-backed-reads.md`
 
-### Step 4: Background Worker
+### Step 4: Background Worker ✅
 
-`SignalGenerationWorker : BackgroundService` that runs signal generation on a configurable schedule. Replaces the external cron + CLI pattern. Calls `ISignalRunExecutionService.RunRealtime()` with trigger source `"worker"`. Respects the same concurrency semaphore as API-triggered runs.
+**Status: COMPLETED**
+
+**What was built:**
+- `SignalGenerationWorker : BackgroundService` in `src/BlowingCandles.Api/Workers/` that runs signal generation on a configurable interval via `ISignalRunExecutionService.RunRealtime("worker")`
+- `WorkerOptions` configuration class (`Enabled`, `IntervalMinutes`) bound from `appsettings.json` `Worker` section
+- Conditional DI registration in `ApiHost.Build()` — worker is only registered as a hosted service when `Worker:Enabled` is `true` (default: `false`)
+- Scoped service resolution per run via `IServiceScopeFactory` to manage `AppDbContext` lifetime correctly
+- No-drift interval timing via `Stopwatch` with `max(0, interval - elapsed)` delay computation
+- Invalid interval guard (< 1 minute): logs warning at startup, remains idle until shutdown
+- Execution failure resilience: exceptions caught, logged at `Error` level, worker continues to next interval
+- Graceful shutdown: `CancellationToken` checked between run and delay, `OperationCanceledException` caught during `Task.Delay`
+- First run executes immediately on startup (no initial delay)
+- `appsettings.json` added to `src/BlowingCandles.Api/` with `Worker` section (disabled by default, 60-minute interval)
+- `ApiHost.ConfigureInfrastructureConfiguration` updated to load Api project's `appsettings.json` alongside CLI project's
+
+**Validation:** `SignalGenerationWorkerTests` covering: conditional DI registration (null/false/true), immediate first run with `"worker"` trigger and scope lifecycle, invalid interval idle behavior with warning log, execution failure logging with clean shutdown. Tests use `RecordingExecutionService` with `TaskCompletionSource` synchronization, `RecordingServiceScopeFactory` tracking scope create/dispose counts, and `ListLogger` for log assertion.
+
+**Feature spec:** `docs/features/background-worker.md`
 
 ### Step 5: Containerized Service and Cleanup
 

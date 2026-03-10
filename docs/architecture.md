@@ -12,12 +12,12 @@ The codebase is organized into five projects following a simplified layered arch
 - **Infrastructure** — file I/O, Yahoo Finance adapter, config parsing, PostgreSQL persistence
 - **Application** — pipeline orchestration, signal run execution service, output rendering, signal serialization
 - **CLI** — entry point, command parsing, dependency wiring
-- **Api** — minimal ASP.NET Core Web API for signal retrieval over HTTP
+- **Api** — minimal ASP.NET Core Web API for signal retrieval over HTTP, with optional background worker for scheduled signal generation
 
 ```mermaid
 flowchart TD
     CLI["CLI\nProgram.cs, Handlers"]
-    API["Api\nApiHost, SignalRunReadService,\nISignalRunExecutionService"]
+    API["Api\nApiHost, SignalRunReadService,\nISignalRunExecutionService,\nSignalGenerationWorker"]
     APP["Application\nSignalRunExecutionService, SignalPipeline,\nOutputRenderer, SignalsJsonSerializer"]
     INFRA["Infrastructure\nYamlConfigLoader, JsonStateStore,\nJsonlAuditWriter, EarningsCalendarFile,\nYahooFinanceAdapter, Persistence"]
     DB[("PostgreSQL\nmarket_data_*, signal_run*,\ntrade_governor_state")]
@@ -135,6 +135,7 @@ All commands are synchronous and single-process. `run-range` loops dates in-proc
   - `GET /health/ready` — checks PostgreSQL connectivity via `PostgreSqlHealthCheck`, returns 200 or 503 (readiness probe).
 - All endpoints use `SignalsJsonSerializer.JsonOptions` (camelCase, `JsonStringEnumConverter`) for consistent serialization.
 - Read and write endpoints return 503 on infrastructure failures (DB unavailable, execution service errors).
+- `SignalGenerationWorker` — `BackgroundService` that runs signal generation on a configurable interval. Calls `ISignalRunExecutionService.RunRealtime("worker")` on each tick. Disabled by default; enabled via `Worker:Enabled` in `appsettings.json`. Uses `IServiceScopeFactory` to create a fresh scope per run. Shares `LiveSemaphore` concurrency with API-triggered realtime runs. Configuration via `WorkerOptions` (`Enabled`, `IntervalMinutes`).
 - `SignalsFileReader` — remains in the codebase but is no longer wired into endpoints (removal deferred to Step 5).
 
 ## Data Flow
@@ -391,8 +392,12 @@ BlowingCandles/
 │   │   ├── BlowingCandles.Api.csproj
 │   │   ├── Program.cs
 │   │   ├── ApiHost.cs
-│   │   └── Services/
-│   │       └── SignalsFileReader.cs
+│   │   ├── WorkerOptions.cs
+│   │   ├── appsettings.json
+│   │   ├── Services/
+│   │   │   └── SignalsFileReader.cs
+│   │   └── Workers/
+│   │       └── SignalGenerationWorker.cs
 │   └── BlowingCandles.Cli/
 │       ├── Program.cs
 │       ├── appsettings.json
