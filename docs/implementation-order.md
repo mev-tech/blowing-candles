@@ -245,7 +245,7 @@ This document describes the order in which major system capabilities should be i
 - `GET /health/ready` — checks PostgreSQL via `PostgreSqlHealthCheck` with `"ready"` tag, returns 200 or 503 (readiness probe)
 - DI wiring: `AddPersistence()`, `ISignalRunExecutionService` scoped registration with `SignalRunExecutionService` factory, `AppConfig` singleton
 - `configurationOverrides` parameter on `ApiHost.Build()` for test-time connection string injection
-- Infrastructure configuration loading from `appsettings.json` and CLI project `appsettings.json` (fallback)
+- Infrastructure configuration loading from `appsettings.json` and CLI project's `appsettings.json` (fallback)
 - `JsonStringEnumConverter` added to `SignalsJsonSerializer.JsonOptions` for correct enum serialization on run endpoints
 - Try/catch on all read and write endpoints returning 503 with consistent error body on infrastructure failures
 - Unpersisted failure detection (`Status == Failed && RunId == 0`) returning 503 instead of 202 with broken result
@@ -284,6 +284,30 @@ This document describes the order in which major system capabilities should be i
 
 **Validation:** `SignalRunPersistenceServiceTests` covering successful run with signals and governor state, empty watchlist, failed run, failed-run-with-signals rejection, ticker normalization and reason truncation, duplicate ticker deduplication (last wins with correct `TickerCount`), and simulation metadata. `SignalRunReadServiceTests` covering latest live run selection, null when no completed live run, run-by-ID lookup with null for missing, recent runs ordering with limit, and excessive limit capping. `TradeGovernorDbStateStoreTests` covering empty-table load, matching-day load, stale-day reset, single-row-per-mode upsert, and live/simulation isolation. All 130 tests pass across all projects, solution builds with zero warnings.
 
+## Phase 14: Portainer Container Management ✅
+
+**Status: COMPLETED**
+
+**Capabilities:** Web-based container management UI via Portainer CE
+
+**What was built:**
+- Portainer CE service added to `docker-compose.yml` using `portainer/portainer-ce:lts` image
+- HTTPS access on port 9443 (default Portainer CE HTTPS port)
+- Portainer data persisted via `portainer_data` named volume, separate from `pgdata`
+- Docker socket mounted read-only (`/var/run/docker.sock:/var/run/docker.sock:ro`) for container visibility
+- `restart: always` added to all three services (app, postgres, portainer) for crash and reboot recovery
+- No `depends_on` — portainer is fully independent of the application stack
+- Port 8000 (Edge agent) not exposed — not needed for single-host setup
+
+**What was NOT changed:**
+- No Dockerfile, C#, or entrypoint modifications
+- Existing app and postgres service behavior unchanged (only `restart: always` added)
+
+**Validation:** Manual verification: `docker compose up` starts all three services; Portainer UI accessible on port 9443; all containers visible in Portainer dashboard; data survives container restarts; all services auto-restart after crashes.
+
+**Feature spec:** `docs/features/portainer-management.md`
+**Fix spec:** `docs/reviews/portainer-management-fixes.md`
+
 ## Decision Points
 
 The following decisions should be made before or during the indicated phase:
@@ -315,6 +339,7 @@ The following decisions should be made before or during the indicated phase:
 | Enum serialization | Step 3 ✅ | `JsonStringEnumConverter` added to `SignalsJsonSerializer.JsonOptions` for correct enum string rendering on run endpoints |
 | Background worker scheduling | Step 4 ✅ | Fixed-interval `BackgroundService` via `WorkerOptions`; no cron expressions; disabled by default; `"worker"` trigger source; shares `LiveSemaphore` with API |
 | Worker configuration source | Step 4 ✅ | `appsettings.json` `Worker` section (`Enabled`, `IntervalMinutes`); not in `config.yaml`; environment variable override via standard ASP.NET config binding |
+| Container management | 14 ✅ | Portainer CE with `lts` tag; Docker socket read-only mount; independent service with no `depends_on`; `restart: always` on all services |
 
 ## API-First Execution Plan
 
@@ -404,3 +429,12 @@ Extended the API with write endpoints (`POST /api/runs/realtime`, `POST /api/run
 
 **Feature spec:** `docs/features/containerized-service-cleanup.md`
 **Fix spec:** `docs/reviews/containerized-service-cleanup-fixes.md`
+
+### Step 6: Portainer Container Management ✅
+
+**Status: COMPLETED**
+
+Added Portainer CE as a web-based container management UI to the Docker Compose stack. All services use `restart: always` for crash and reboot recovery. Docker-compose-only change with no application code modifications.
+
+**Feature spec:** `docs/features/portainer-management.md`
+**Fix spec:** `docs/reviews/portainer-management-fixes.md`

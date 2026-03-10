@@ -2,6 +2,7 @@ services:
   app:
     build: .
     image: blowing-candles
+    restart: always
     depends_on:
       postgres:
         condition: service_healthy
@@ -17,6 +18,7 @@ services:
 
   postgres:
     image: postgres:16-alpine
+    restart: always
     environment:
       POSTGRES_DB: blowing_candles
       POSTGRES_USER: postgres
@@ -31,5 +33,15 @@ services:
       timeout: 3s
       retries: 5
 
+  portainer:
+    image: portainer/portainer-ce:lts
+    restart: always
+    ports:
+      - "9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - portainer_data:/data
+
 volumes:
   pgdata:
+  portainer_data:

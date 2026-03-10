@@ -101,8 +101,7 @@ public static class ApiHost
             .AddJsonFile(Path.Combine("src", "BlowingCandles.Api", "appsettings.json"), optional: true)
             .AddJsonFile(Path.Combine("src", "BlowingCandles.Api", "appsettings.Development.json"), optional: true)
             .AddJsonFile(Path.Combine("src", "BlowingCandles.Cli", "appsettings.json"), optional: true)
-            .AddJsonFile(Path.Combine("src", "BlowingCandles.Cli", "appsettings.Development.json"), optional: true)
-            .AddEnvironmentVariables();
+            .AddJsonFile(Path.Combine("src", "BlowingCandles.Cli", "appsettings.Development.json"), optional: true);
 
         if (configurationOverrides is not null)
         {
