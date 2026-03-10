@@ -1,5 +1,9 @@
 *.pyc
 *.signals.*
+signals.txt
+signals.json
+data/state.json
+data/sim_state.json
 # Build results
 
 bin/

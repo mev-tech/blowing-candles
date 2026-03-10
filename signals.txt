@@ -1,4 +1,0 @@
-AAPL: Action.WAIT | NewsState.TRADE_OK | Action.WAIT | MARKET_DATA_ERROR
-MSFT: Action.WAIT | NewsState.TRADE_OK | Action.WAIT | MARKET_DATA_ERROR
-NVDA: Action.WAIT | NewsState.TRADE_OK | Action.WAIT | MARKET_DATA_ERROR
-TSLA: Action.WAIT | NewsState.TRADE_OK | Action.WAIT | MARKET_DATA_ERROR
